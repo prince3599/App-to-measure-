@@ -2,8 +2,8 @@ import Foundation
 
 /// A flat surface or object as seen from above, already projected into plan space.
 /// The capture layer (RoomPlan today) converts its output into these.
-public struct ScannedItem: Sendable {
-    public enum Kind: Sendable, Equatable {
+public struct ScannedItem: Codable, Equatable, Sendable {
+    public enum Kind: Codable, Sendable, Equatable {
         case wall
         case door
         case window
@@ -77,11 +77,15 @@ public struct PlanBuilder: Sendable {
     }
 
     /// Moves nearby wall ends onto the intersection of their walls so corners close exactly.
+    /// Nearly parallel walls (a split wall or a small jog) meet far away, so those ends meet halfway instead.
     func joinCorners(_ walls: inout [Wall]) {
         for corner in PlanGeometry.corners(of: walls, tolerance: cornerTolerance) {
             let a = walls[corner.a.wall].line, b = walls[corner.b.wall].line
-            let p = a.lineIntersection(b)
-                ?? (end(of: a, corner.a.atEnd) + end(of: b, corner.b.atEnd)) / 2
+            let ea = end(of: a, corner.a.atEnd), eb = end(of: b, corner.b.atEnd)
+            var p = (ea + eb) / 2
+            if let x = a.lineIntersection(b), x.distance(to: ea) <= 2 * cornerTolerance, x.distance(to: eb) <= 2 * cornerTolerance {
+                p = x
+            }
             setEnd(&walls[corner.a.wall].line, corner.a.atEnd, p)
             setEnd(&walls[corner.b.wall].line, corner.b.atEnd, p)
         }
@@ -145,6 +149,10 @@ public enum PlanGeometry {
         let original = faces
         for corner in corners(of: plan.walls, tolerance: tolerance) {
             guard let p = original[corner.a.wall].lineIntersection(original[corner.b.wall]) else { continue }
+            // Skip corners between nearly parallel walls, whose faces would meet far away.
+            let reach = 4 * max(plan.walls[corner.a.wall].thickness, plan.walls[corner.b.wall].thickness, 0.1)
+            let ends = [corner.a, corner.b].map { $0.atEnd ? original[$0.wall].end : original[$0.wall].start }
+            guard ends.allSatisfy({ $0.distance(to: p) <= reach }) else { continue }
             for end in [corner.a, corner.b] {
                 if end.atEnd { faces[end.wall].end = p } else { faces[end.wall].start = p }
             }

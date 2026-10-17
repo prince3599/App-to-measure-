@@ -54,10 +54,11 @@ struct FloorView: View {
                 .task(id: project) { files = ExportFiles.floorFiles(project, floorIndex: floorIndex) }
                 .fullScreenCover(isPresented: $isScanning) {
                     FloorScanView(floorName: floor.name) { captured in
-                        let scanned = RoomPlanConverter.room(from: captured)
+                        var room = RoomPlanConverter.room(from: captured)
                         store.modify(route.project) { p in
                             guard let i = p.floors.firstIndex(where: { $0.id == route.floor }) else { return }
-                            p.floors[i].rooms.append(Room(name: p.floors[i].uniqueRoomName(scanned.name), plan: scanned.plan))
+                            room.name = p.floors[i].uniqueRoomName(room.name)
+                            p.floors[i].rooms.append(room)
                         }
                     }
                 }

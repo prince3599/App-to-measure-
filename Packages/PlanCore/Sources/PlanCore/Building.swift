@@ -5,10 +5,13 @@ public struct Room: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID()
     public var name: String
     public var plan: FloorPlan
+    /// The raw scan, kept so plans can be rebuilt when the plan logic improves.
+    public var scan: [ScannedItem]?
 
-    public init(name: String, plan: FloorPlan) {
+    public init(name: String, plan: FloorPlan, scan: [ScannedItem]? = nil) {
         self.name = name
         self.plan = plan
+        self.scan = scan
     }
 }
 

@@ -7,10 +7,11 @@ import simd
 /// RoomPlan uses a right-handed, y-up world in metres. Looking down from above,
 /// world +x becomes plan +x and world -z becomes plan +y.
 enum RoomPlanConverter {
-    static func room(from captured: CapturedRoom) -> (name: String, plan: FloorPlan) {
+    static func room(from captured: CapturedRoom) -> Room {
         let label = captured.sections.first.map { String(describing: $0.label) } ?? "unidentified"
         let name = label == "unidentified" ? "Room" : prettify(label)
-        return (name, PlanBuilder().build(from: items(from: captured)))
+        let scan = items(from: captured)
+        return Room(name: name, plan: PlanBuilder().build(from: scan), scan: scan)
     }
 
     static func items(from room: CapturedRoom) -> [ScannedItem] {

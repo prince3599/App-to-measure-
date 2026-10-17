@@ -49,4 +49,18 @@ final class PlanBuilderTests: XCTestCase {
         XCTAssertEqual(plan.size.depth, 3.2, accuracy: 1e-9)
         XCTAssertEqual(plan.labelPoint.distance(to: Point2(2.0, 1.6)), 0, accuracy: 1e-9)
     }
+
+    /// Two almost parallel wall pieces with a small sideways jog used to meet kilometres away.
+    func testNearlyParallelWallsDoNotStretch() {
+        let angle = 0.5 * Double.pi / 180
+        let items = [
+            ScannedItem(kind: .wall, center: Point2(1.5, 0), direction: Point2(1, 0), width: 3.0),
+            ScannedItem(kind: .wall, center: Point2(3.05 + 1.5 * cos(angle), 0.08 + 1.5 * sin(angle)),
+                        direction: Point2(cos(angle), sin(angle)), width: 3.0),
+        ]
+        let plan = PlanBuilder().build(from: items)
+        XCTAssertEqual(plan.walls[0].line.length, 3.0, accuracy: 0.05)
+        XCTAssertEqual(plan.walls[1].line.length, 3.0, accuracy: 0.05)
+        XCTAssertEqual(plan.walls[0].line.end.distance(to: plan.walls[1].line.start), 0, accuracy: 1e-9)
+    }
 }
