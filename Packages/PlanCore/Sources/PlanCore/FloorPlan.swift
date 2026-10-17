@@ -65,13 +65,40 @@ public struct Opening: Codable, Equatable, Sendable {
     public var width: Double
     /// 0 when unknown.
     public var height: Double
+    /// Doors: hinge at the wall-end side of the opening instead of the wall-start side.
+    public var hingeAtEnd: Bool
+    /// Doors: swing out of the room instead of into it.
+    public var swingsOut: Bool
+    /// Doors: number of leaves (1 single, 2 double, ...).
+    public var leaves: Int
 
-    public init(kind: OpeningKind, wallIndex: Int, offset: Double, width: Double, height: Double = 0) {
+    public init(kind: OpeningKind, wallIndex: Int, offset: Double, width: Double, height: Double = 0,
+                hingeAtEnd: Bool = false, swingsOut: Bool = false, leaves: Int = 1) {
         self.kind = kind
         self.wallIndex = wallIndex
         self.offset = offset
         self.width = width
         self.height = height
+        self.hingeAtEnd = hingeAtEnd
+        self.swingsOut = swingsOut
+        self.leaves = leaves
+    }
+
+    // Newer fields are optional so plans saved by earlier versions still load.
+    private enum CodingKeys: String, CodingKey {
+        case kind, wallIndex, offset, width, height, hingeAtEnd, swingsOut, leaves
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(OpeningKind.self, forKey: .kind)
+        wallIndex = try c.decode(Int.self, forKey: .wallIndex)
+        offset = try c.decode(Double.self, forKey: .offset)
+        width = try c.decode(Double.self, forKey: .width)
+        height = try c.decodeIfPresent(Double.self, forKey: .height) ?? 0
+        hingeAtEnd = try c.decodeIfPresent(Bool.self, forKey: .hingeAtEnd) ?? false
+        swingsOut = try c.decodeIfPresent(Bool.self, forKey: .swingsOut) ?? false
+        leaves = try c.decodeIfPresent(Int.self, forKey: .leaves) ?? 1
     }
 }
 

@@ -12,8 +12,13 @@ An iPhone and iPad app that measures a whole house with the camera and LiDAR (Ap
 2. **Add floors**: Basement, First Floor, Second Floor and so on.
 3. **Scan Rooms**: on each floor, scan every room in one session. After each room, tap **Room Done**, walk into the next room and continue. Rooms scanned in one session share coordinates, so they line up.
 4. **Plan**: rooms are joined into one floor plan. Walls between two scanned rooms are drawn once, at their measured thickness. Exterior walls get a 150 mm (6") default. Room names, sizes, areas and ceiling heights, door and window tags, wall dimensions and overall dimensions are added automatically.
-5. **Correct lengths**: tap any wall and type its tape-measured length. Every room on that floor rescales to match.
-6. **Export**: one 11 x 17 in permit sheet per floor, at 1/4" = 1'-0" (or the largest scale that fits), with a title block. A DXF per floor is also exported.
+5. **Room by room**: rooms scanned in a later session appear beside the plan. Switch to **Move Rooms**, tap the room, drag it next to its neighbour, rotate it if needed (90° or 1° steps), and tap **Snap**. Snap lines its wall up with the neighbour's wall at a 120 mm (4¾") gap and makes the corners flush. You can move any room this way to fix a misplaced scan.
+6. **Edit** (tap on the plan):
+   - **A wall**: set this wall's length (the far end moves and the joined walls follow), or scale the whole floor from it. You can also add a door or window there.
+   - **A door**: flip the hinge side, swing into or out of the room, split it into 2, 3 or 4 leaves, change its width, change it to a window, or delete it.
+   - **A window**: change its width, change it to a door, or delete it.
+   - **Inside a room**: rename it.
+7. **Export**: one 11 x 17 in permit sheet per floor, at 1/4" = 1'-0" (or the largest scale that fits), with a title block. A DXF per floor is also exported.
 
 **Add Sample House** (in the home screen's menu) creates a two-storey house, so you can try everything without LiDAR.
 
@@ -68,7 +73,7 @@ swift test
 MeasurePlan/                 iOS app (SwiftUI)
   ContentView.swift          Houses list, new house form
   ProjectView.swift          House details, floors, exports
-  FloorView.swift            Floor plan, rooms, length correction
+  FloorView.swift            Floor plan: tap to edit walls and doors, move rooms
   FloorScanView.swift        Multi-room RoomPlan capture (one AR session per floor)
   RoomPlanConverter.swift    RoomPlan 3D result -> top-view items and room name
   PermitPDF.swift            11 x 17 permit sheets
@@ -76,6 +81,7 @@ MeasurePlan/                 iOS app (SwiftUI)
   ProjectStore.swift         Saved houses (JSON in Documents/Projects)
 Packages/PlanCore/           Platform-independent core
   Building.swift             House, floors, rooms
+  Editing.swift              Move, rotate and snap rooms; wall lengths; tap hit tests
   PlanBuilder.swift          Joins wall corners, attaches doors/windows to walls
   WallAnalysis.swift         Finds walls shared by two rooms
   PlanDrawing.swift          Floor -> layered lines, arcs and text
@@ -88,6 +94,6 @@ samples/                     Example output
 
 ## Roadmap
 
-Known limits: a north arrow is drawn pointing up and needs rotating to the site. Rooms scanned in separate sessions don't line up yet. Floors aren't aligned to each other.
+Known limits: a north arrow is drawn pointing up and needs rotating to the site. Rooms scanned in separate sessions are placed by hand (Move Rooms and Snap). Floors aren't aligned to each other.
 
-Next up: aligning rooms from separate sessions, elevations, DWG export.
+Next up: elevations, DWG export.

@@ -199,16 +199,25 @@ public struct PlanDrawing: Sendable {
         let tagHeight = textHeight * 0.75
         switch o.kind {
         case .door:
-            // Hinged at `a`, swinging into the room.
-            let inward = n * -1
-            let (s, e) = inward.cross(d) > 0 ? (inward.angle, d.angle) : (d.angle, inward.angle)
-            var items = [
-                DrawingItem(layer: .door, primitive: .line(a, a + inward * o.width)),
-                DrawingItem(layer: .door, primitive: .arc(center: a, radius: o.width, start: s, end: e)),
-            ]
+            let swing = o.swingsOut ? n : n * -1
+            var items: [DrawingItem] = []
+            let count = max(1, o.leaves)
+            let leaf = o.width / Double(count)
+            for k in 0..<count {
+                let s0 = a + d * (Double(k) * leaf), s1 = s0 + d * leaf
+                // Single: hinge at one side. Double: hinges at both outer edges. More: pairs meeting in the middle.
+                var hingeAtStart = count == 1 ? true : k % 2 == 0
+                if o.hingeAtEnd && count != 2 { hingeAtStart.toggle() }
+                let hinge = hingeAtStart ? s0 : s1
+                let free = (hingeAtStart ? s1 : s0) - hinge
+                let (start, end) = swing.cross(free) > 0 ? (swing.angle, free.angle) : (free.angle, swing.angle)
+                items.append(DrawingItem(layer: .door, primitive: .line(hinge, hinge + swing * leaf)))
+                items.append(DrawingItem(layer: .door, primitive: .arc(center: hinge, radius: leaf, start: start, end: end)))
+            }
             if showOpeningTags {
+                let label = count > 1 ? "D \(unit.format(o.width)) (\(count))" : "D \(unit.format(o.width))"
                 items.append(DrawingItem(layer: .annotation, primitive: .text(
-                    at: mid + inward * 0.3, height: tagHeight, string: "D \(unit.format(o.width))",
+                    at: mid + swing * 0.3, height: tagHeight, string: label,
                     rotation: readable(d.angle))))
             }
             return items

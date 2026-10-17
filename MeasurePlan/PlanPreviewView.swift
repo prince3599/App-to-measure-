@@ -2,30 +2,34 @@ import PlanCore
 import SwiftUI
 
 /// Draws the same layered line work that goes into the PDF and DXF files.
-/// Pinch to zoom, drag to pan, double-tap to reset, tap a wall to select it.
+/// Pinch to zoom, drag to pan (or to move a room when `onDrag` is set), double-tap to reset.
 struct PlanPreviewView: View {
     var items: [DrawingItem]
-    /// Room-side wall faces that can be tapped.
-    var walls: [(WallRef, Segment2)]
-    var selectedWall: WallRef?
-    var onTapWall: ((WallRef) -> Void)?
+    /// Drawn as a thick accent stroke under the plan (selected wall, door or room).
+    var highlights: [Segment2] = []
+    /// Tap location in plan metres, and a hit tolerance in metres matching about 30 points on screen.
+    var onTap: ((Point2, Double) -> Void)?
+    /// Drag distance in plan metres since the drag began, and whether it ended.
+    var onDrag: ((Point2, Bool) -> Void)?
 
     @State private var zoom: CGFloat = 1
     @State private var lastZoom: CGFloat = 1
     @State private var pan: CGSize = .zero
     @State private var lastPan: CGSize = .zero
+    /// The view's framing is held still while a room is being dragged.
+    @State private var frozenExtents: (Point2, Point2)?
 
     var body: some View {
-        let extents = Self.extents(of: items)
+        let extents = frozenExtents ?? Self.extents(of: items)
         GeometryReader { geo in
             let layout = extents.map { Layout(extents: $0, size: geo.size, zoom: zoom, pan: pan) }
             Canvas { context, _ in
                 guard let layout else { return }
-                if let selectedWall, let line = walls.first(where: { $0.0 == selectedWall })?.1 {
+                for line in highlights {
                     var path = Path()
                     path.move(to: layout.screen(line.start))
                     path.addLine(to: layout.screen(line.end))
-                    context.stroke(path, with: .color(.accentColor.opacity(0.5)), lineWidth: 10)
+                    context.stroke(path, with: .color(.accentColor.opacity(0.45)), lineWidth: 10)
                 }
                 for item in items {
                     draw(item, in: context, layout: layout)
@@ -34,31 +38,35 @@ struct PlanPreviewView: View {
             .contentShape(Rectangle())
             .gesture(
                 MagnifyGesture()
-                    .onChanged { zoom = max(0.5, min(lastZoom * $0.magnification, 10)) }
+                    .onChanged { zoom = max(0.5, min(lastZoom * $0.magnification, 20)) }
                     .onEnded { _ in lastZoom = zoom }
                     .simultaneously(with: DragGesture()
-                        .onChanged { pan = CGSize(width: lastPan.width + $0.translation.width,
-                                                  height: lastPan.height + $0.translation.height) }
-                        .onEnded { _ in lastPan = pan })
+                        .onChanged { value in
+                            if let onDrag, let layout {
+                                if frozenExtents == nil { frozenExtents = extents }
+                                onDrag(Point2(value.translation.width / layout.scale, -value.translation.height / layout.scale), false)
+                            } else {
+                                pan = CGSize(width: lastPan.width + value.translation.width,
+                                             height: lastPan.height + value.translation.height)
+                            }
+                        }
+                        .onEnded { value in
+                            if let onDrag, let layout {
+                                onDrag(Point2(value.translation.width / layout.scale, -value.translation.height / layout.scale), true)
+                                frozenExtents = nil
+                            } else {
+                                lastPan = pan
+                            }
+                        })
             )
             .onTapGesture(count: 2) {
                 zoom = 1; lastZoom = 1; pan = .zero; lastPan = .zero
             }
             .onTapGesture(count: 1, coordinateSpace: .local) { location in
-                guard let layout, let onTapWall, let wall = nearestWall(to: location, layout: layout) else { return }
-                onTapWall(wall)
+                guard let layout, let onTap else { return }
+                onTap(layout.plan(location), 30 / layout.scale)
             }
         }
-    }
-
-    /// The wall within 30 points of a tap, if any.
-    private func nearestWall(to location: CGPoint, layout: Layout) -> WallRef? {
-        let p = layout.plan(location)
-        let tolerance = 30 / layout.scale
-        return walls
-            .map { ($0.0, $0.1.distance(to: p)) }
-            .filter { $0.1 <= tolerance }
-            .min { $0.1 < $1.1 }?.0
     }
 
     private func draw(_ item: DrawingItem, in context: GraphicsContext, layout: Layout) {
