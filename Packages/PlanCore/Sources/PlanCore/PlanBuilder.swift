@@ -18,13 +18,16 @@ public struct ScannedItem: Sendable {
     public var width: Double
     /// Only meaningful for objects.
     public var depth: Double
+    /// Vertical size (wall height, window height). 0 when unknown.
+    public var height: Double
 
-    public init(kind: Kind, center: Point2, direction: Point2, width: Double, depth: Double = 0) {
+    public init(kind: Kind, center: Point2, direction: Point2, width: Double, depth: Double = 0, height: Double = 0) {
         self.kind = kind
         self.center = center
         self.direction = direction.normalized
         self.width = width
         self.depth = depth
+        self.height = height
     }
 }
 
@@ -60,7 +63,7 @@ public struct PlanBuilder: Sendable {
             let wall = walls[nearest]
             let half = min(item.width, wall.line.length) / 2
             let offset = min(max(wall.line.distanceAlong(item.center), half), wall.line.length - half)
-            openings.append(Opening(kind: kind, wallIndex: nearest, offset: offset, width: half * 2))
+            openings.append(Opening(kind: kind, wallIndex: nearest, offset: offset, width: half * 2, height: item.height))
         }
 
         let objects = items.compactMap { item -> PlanObject? in
@@ -69,7 +72,8 @@ public struct PlanBuilder: Sendable {
                               depth: item.depth, rotation: item.direction.angle)
         }
 
-        return FloorPlan(walls: walls, openings: openings, objects: objects)
+        let ceiling = items.filter { $0.kind == .wall }.map(\.height).max() ?? 0
+        return FloorPlan(walls: walls, openings: openings, objects: objects, ceilingHeight: ceiling)
     }
 
     /// Moves nearby wall ends onto the intersection of their walls so corners close exactly.

@@ -1,13 +1,14 @@
 import PlanCore
 import SwiftUI
 
-/// Draws the same layered line work that goes into the DXF file.
+/// Draws the same layered line work that goes into the PDF and DXF files.
 /// Pinch to zoom, drag to pan, double-tap to reset, tap a wall to select it.
 struct PlanPreviewView: View {
-    var plan: FloorPlan
-    var unit: LengthUnit
-    var selectedWall: Int?
-    var onTapWall: ((Int) -> Void)?
+    var items: [DrawingItem]
+    /// Room-side wall faces that can be tapped.
+    var walls: [(WallRef, Segment2)]
+    var selectedWall: WallRef?
+    var onTapWall: ((WallRef) -> Void)?
 
     @State private var zoom: CGFloat = 1
     @State private var lastZoom: CGFloat = 1
@@ -15,14 +16,12 @@ struct PlanPreviewView: View {
     @State private var lastPan: CGSize = .zero
 
     var body: some View {
-        let items = PlanDrawing(unit: unit).items(for: plan)
         let extents = Self.extents(of: items)
         GeometryReader { geo in
             let layout = extents.map { Layout(extents: $0, size: geo.size, zoom: zoom, pan: pan) }
             Canvas { context, _ in
                 guard let layout else { return }
-                if let selectedWall, plan.walls.indices.contains(selectedWall) {
-                    let line = plan.walls[selectedWall].line
+                if let selectedWall, let line = walls.first(where: { $0.0 == selectedWall })?.1 {
                     var path = Path()
                     path.move(to: layout.screen(line.start))
                     path.addLine(to: layout.screen(line.end))
@@ -53,11 +52,11 @@ struct PlanPreviewView: View {
     }
 
     /// The wall within 30 points of a tap, if any.
-    private func nearestWall(to location: CGPoint, layout: Layout) -> Int? {
+    private func nearestWall(to location: CGPoint, layout: Layout) -> WallRef? {
         let p = layout.plan(location)
         let tolerance = 30 / layout.scale
-        return plan.walls.indices
-            .map { ($0, plan.walls[$0].line.distance(to: p)) }
+        return walls
+            .map { ($0.0, $0.1.distance(to: p)) }
             .filter { $0.1 <= tolerance }
             .min { $0.1 < $1.1 }?.0
     }
@@ -118,7 +117,7 @@ struct PlanPreviewView: View {
         case .glazing: return .cyan
         case .furniture: return .gray
         case .dimensions: return .red
-        case .annotation: return .orange
+        case .annotation: return .blue
         }
     }
 

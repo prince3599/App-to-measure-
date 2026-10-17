@@ -1,26 +1,31 @@
 # MeasurePlan
 
-An iPhone app that scans a room with the camera and LiDAR (Apple RoomPlan), draws its 2D floor plan, and exports a **DXF** file that opens directly in AutoCAD.
+An iPhone and iPad app that measures a whole house with the camera and LiDAR (Apple RoomPlan), floor by floor, and produces permit-ready floor plans as **PDF sheets** and **AutoCAD DXF** files.
 
-![Sample floor plan](samples/sample-room.png)
+![Sample first floor](samples/sample-house-first-floor.png)
 
-[`samples/sample-room.dxf`](samples/sample-room.dxf) is an example of the output. Open it in AutoCAD, DWG TrueView or LibreCAD.
+[`samples/sample-house-first-floor.dxf`](samples/sample-house-first-floor.dxf) is an example of the output. Open it in AutoCAD, DWG TrueView or LibreCAD.
 
-## What it does
+## How it works
 
-1. **Scan Room**: RoomPlan guides you around the room and detects walls, doors, windows, openings and furniture.
-2. **Plan**: walls are joined at the corners and drawn with thickness, with door swings, window glazing, furniture outlines and interior dimensions.
-3. **Correct lengths**: tap any wall and type its tape-measured length. The whole plan rescales to match.
-4. **Export DXF**: the share sheet sends the file to Files, Mail, AirDrop, Google Drive and so on.
+1. **New House**: enter the address, owner and units (ft-in or mm).
+2. **Add floors**: Basement, First Floor, Second Floor and so on.
+3. **Scan Rooms**: on each floor, scan every room in one session. After each room, tap **Room Done**, walk into the next room and continue. Rooms scanned in one session share coordinates, so they line up.
+4. **Plan**: rooms are joined into one floor plan. Walls between two scanned rooms are drawn once, at their measured thickness. Exterior walls get a 150 mm (6") default. Room names, sizes, areas and ceiling heights, door and window tags, wall dimensions and overall dimensions are added automatically.
+5. **Correct lengths**: tap any wall and type its tape-measured length. Every room on that floor rescales to match.
+6. **Export**: one 11 x 17 in permit sheet per floor, at 1/4" = 1'-0" (or the largest scale that fits), with a title block. A DXF per floor is also exported.
 
-On devices without LiDAR (and in the simulator) you can use **Add Sample Room** from the toolbar menu to try the plan view and export.
+**Add Sample House** (in the home screen's menu) creates a two-storey house, so you can try everything without LiDAR.
+
+Fixtures (toilet, sink, tub, stove, fridge, stairs) are always drawn. Movable furniture is off by default; turn it on per house.
 
 ## DXF output
 
 - Format: ASCII DXF R12 (AC1009), the most widely readable version.
 - Units: drawn 1:1 in **millimetres** by default, or inches when "ft-in" is selected.
 - Layers: `A-WALL`, `A-DOOR`, `A-GLAZ`, `A-FURN`, `A-DIMS`, `A-ANNO`.
-- Dimensions are the interior (clear) length of each wall. Wall thickness is a 100 mm default, because a scan from inside one room can't see how thick a wall is.
+- Wall dimensions are interior (clear) lengths, placed outside the building. Overall dimensions run to the outside faces.
+- Title block text sits under the plan in model space.
 
 To get a DWG, open the DXF in AutoCAD and use Save As.
 
@@ -46,7 +51,7 @@ In Xcode, pick your team under Signing & Capabilities, change the bundle identif
 ./tools/make-playground.sh   # writes build/MeasurePlan.swiftpm.zip
 ```
 
-Copy the zip to the iPad, unzip it in the Files app, and open `MeasurePlan.swiftpm` in Swift Playgrounds. Then press Run. To install it as a standalone app, use the app settings menu. Room scanning needs an iPad Pro with LiDAR. On other iPads, use "Add Sample Room".
+Copy the zip to the iPad, unzip it in the Files app, and open `MeasurePlan.swiftpm` in Swift Playgrounds. Then press Run. To install it as a standalone app, use the app settings menu. Room scanning needs an iPad Pro with LiDAR. On other iPads, use "Add Sample House".
 
 ## Tests
 
@@ -61,14 +66,20 @@ swift test
 
 ```
 MeasurePlan/                 iOS app (SwiftUI)
-  ScanView.swift             RoomPlan capture screen
-  RoomPlanConverter.swift    RoomPlan 3D result -> top-view items
-  PlanDetailView.swift       Plan preview, units, DXF export
+  ContentView.swift          Houses list, new house form
+  ProjectView.swift          House details, floors, exports
+  FloorView.swift            Floor plan, rooms, length correction
+  FloorScanView.swift        Multi-room RoomPlan capture (one AR session per floor)
+  RoomPlanConverter.swift    RoomPlan 3D result -> top-view items and room name
+  PermitPDF.swift            11 x 17 permit sheets
   PlanPreviewView.swift      On-screen drawing of the plan
-  ScanStore.swift            Saved scans (JSON in Documents/Scans)
+  ProjectStore.swift         Saved houses (JSON in Documents/Projects)
 Packages/PlanCore/           Platform-independent core
+  Building.swift             House, floors, rooms
   PlanBuilder.swift          Joins wall corners, attaches doors/windows to walls
-  PlanDrawing.swift          Plan -> layered lines, arcs and text
+  WallAnalysis.swift         Finds walls shared by two rooms
+  PlanDrawing.swift          Floor -> layered lines, arcs and text
+  Sheet.swift                Sheet scale, title block
   DXFWriter.swift            Layered line work -> DXF
 samples/                     Example output
 ```
@@ -77,4 +88,6 @@ samples/                     Example output
 
 ## Roadmap
 
-Next up: multi-room scans, editing wall lengths by hand, PDF export, and DWG export.
+Known limits: a north arrow is drawn pointing up and needs rotating to the site. Rooms scanned in separate sessions don't line up yet. Floors aren't aligned to each other.
+
+Next up: aligning rooms from separate sessions, elevations, DWG export.

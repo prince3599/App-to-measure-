@@ -10,9 +10,9 @@ extension FloorPlan {
         return scaled(by: length / current)
     }
 
-    /// Scales positions and sizes about the centroid. Wall thickness is left unchanged.
-    public func scaled(by factor: Double) -> FloorPlan {
-        let c = centroid
+    /// Scales positions and sizes about `center` (the plan's centroid by default). Wall thickness is left unchanged.
+    public func scaled(by factor: Double, about center: Point2? = nil) -> FloorPlan {
+        let c = center ?? centroid
         func s(_ p: Point2) -> Point2 { c + (p - c) * factor }
         var plan = self
         for i in plan.walls.indices {
@@ -21,7 +21,9 @@ extension FloorPlan {
         for i in plan.openings.indices {
             plan.openings[i].offset *= factor
             plan.openings[i].width *= factor
+            plan.openings[i].height *= factor
         }
+        plan.ceilingHeight *= factor
         for i in plan.objects.indices {
             plan.objects[i].center = s(objects[i].center)
             plan.objects[i].width *= factor

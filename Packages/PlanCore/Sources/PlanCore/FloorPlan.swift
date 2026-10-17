@@ -6,11 +6,14 @@ public struct FloorPlan: Codable, Equatable, Sendable {
     public var walls: [Wall]
     public var openings: [Opening]
     public var objects: [PlanObject]
+    /// Tallest scanned wall, or 0 when unknown.
+    public var ceilingHeight: Double
 
-    public init(walls: [Wall] = [], openings: [Opening] = [], objects: [PlanObject] = []) {
+    public init(walls: [Wall] = [], openings: [Opening] = [], objects: [PlanObject] = [], ceilingHeight: Double = 0) {
         self.walls = walls
         self.openings = openings
         self.objects = objects
+        self.ceilingHeight = ceilingHeight
     }
 
     /// Mean of wall midpoints; used to decide which side of a wall is "inside".
@@ -43,7 +46,8 @@ public struct Wall: Codable, Equatable, Sendable {
         self.thickness = thickness
     }
 
-    public static let defaultThickness = 0.10
+    /// Typical exterior wall (2x6 framing plus finishes). Interior walls get their real thickness when both rooms are scanned.
+    public static let defaultThickness = 0.15
 }
 
 public enum OpeningKind: String, Codable, Sendable {
@@ -59,12 +63,15 @@ public struct Opening: Codable, Equatable, Sendable {
     /// Distance of the opening's centre from the wall's start point.
     public var offset: Double
     public var width: Double
+    /// 0 when unknown.
+    public var height: Double
 
-    public init(kind: OpeningKind, wallIndex: Int, offset: Double, width: Double) {
+    public init(kind: OpeningKind, wallIndex: Int, offset: Double, width: Double, height: Double = 0) {
         self.kind = kind
         self.wallIndex = wallIndex
         self.offset = offset
         self.width = width
+        self.height = height
     }
 }
 
@@ -96,4 +103,96 @@ public struct PlanObject: Codable, Equatable, Sendable {
             center - u * hw + v * hd,
         ]
     }
+}
+
+extension FloorPlan {
+    /// The room's floor outline, following walls around their joined corners.
+    /// Falls back to the convex hull of the wall ends when the walls don't form a closed loop.
+    public var outline: [Point2] {
+        closedWallLoop ?? convexHull(walls.flatMap { [$0.line.start, $0.line.end] })
+    }
+
+    /// Floor area inside the walls, in square metres.
+    public var area: Double {
+        let p = outline
+        guard p.count >= 3 else { return 0 }
+        return abs(signedArea(p))
+    }
+
+    /// Where to put the room's label: the outline's centroid.
+    public var labelPoint: Point2 {
+        let p = outline
+        let a = signedArea(p)
+        guard p.count >= 3, abs(a) > 1e-9 else { return centroid }
+        var c = Point2.zero
+        for i in p.indices {
+            let q0 = p[i], q1 = p[(i + 1) % p.count]
+            c = c + (q0 + q1) * q0.cross(q1)
+        }
+        return c / (6 * a)
+    }
+
+    /// Overall interior width and depth, measured along the longest wall.
+    public var size: (width: Double, depth: Double) {
+        guard let longest = walls.max(by: { $0.line.length < $1.line.length }) else { return (0, 0) }
+        let u = longest.line.direction, v = u.perpendicular
+        let pts = outline
+        guard let first = pts.first else { return (0, 0) }
+        var lo = Point2(first.dot(u), first.dot(v)), hi = lo
+        for p in pts {
+            lo = Point2(min(lo.x, p.dot(u)), min(lo.y, p.dot(v)))
+            hi = Point2(max(hi.x, p.dot(u)), max(hi.y, p.dot(v)))
+        }
+        return (hi.x - lo.x, hi.y - lo.y)
+    }
+
+    private var closedWallLoop: [Point2]? {
+        guard walls.count >= 3 else { return nil }
+        let corners = PlanGeometry.corners(of: walls, tolerance: 0.01)
+        func partner(_ e: PlanGeometry.WallEnd) -> PlanGeometry.WallEnd? {
+            for c in corners {
+                if c.a == e { return c.b }
+                if c.b == e { return c.a }
+            }
+            return nil
+        }
+        var points: [Point2] = []
+        var wall = 0, forward = true
+        var visited = Set<Int>()
+        while !visited.contains(wall) {
+            visited.insert(wall)
+            let line = walls[wall].line
+            points.append(forward ? line.start : line.end)
+            guard let next = partner(PlanGeometry.WallEnd(wall: wall, atEnd: forward)) else { return nil }
+            wall = next.wall
+            forward = !next.atEnd
+        }
+        return wall == 0 && points.count >= 3 ? points : nil
+    }
+}
+
+func signedArea(_ p: [Point2]) -> Double {
+    guard p.count >= 3 else { return 0 }
+    var sum = 0.0
+    for i in p.indices {
+        sum += p[i].cross(p[(i + 1) % p.count])
+    }
+    return sum / 2
+}
+
+func convexHull(_ points: [Point2]) -> [Point2] {
+    let pts = points.sorted { $0.x == $1.x ? $0.y < $1.y : $0.x < $1.x }
+    guard pts.count >= 3 else { return pts }
+    func half(_ seq: [Point2]) -> [Point2] {
+        var h: [Point2] = []
+        for p in seq {
+            while h.count >= 2 && (h[h.count - 1] - h[h.count - 2]).cross(p - h[h.count - 2]) <= 0 {
+                h.removeLast()
+            }
+            h.append(p)
+        }
+        return h
+    }
+    let lower = half(pts), upper = half(pts.reversed())
+    return Array(lower.dropLast()) + Array(upper.dropLast())
 }

@@ -38,7 +38,15 @@ final class PlanBuilderTests: XCTestCase {
     func testOuterFacesMeetAtCorners() {
         let plan = PlanBuilder().build(from: Self.sampleItems)
         let faces = PlanGeometry.outerFaces(of: plan)
-        XCTAssertEqual(faces[0].start.distance(to: Point2(-0.1, -0.1)), 0, accuracy: 1e-9)
-        XCTAssertEqual(faces[0].end.distance(to: Point2(4.1, -0.1)), 0, accuracy: 1e-9)
+        XCTAssertEqual(faces[0].start.distance(to: Point2(-0.15, -0.15)), 0, accuracy: 1e-9)
+        XCTAssertEqual(faces[0].end.distance(to: Point2(4.15, -0.15)), 0, accuracy: 1e-9)
+    }
+
+    func testAreaAndSize() {
+        let plan = PlanBuilder().build(from: Self.sampleItems)
+        XCTAssertEqual(plan.area, 12.8, accuracy: 1e-9)
+        XCTAssertEqual(plan.size.width, 4.0, accuracy: 1e-9)
+        XCTAssertEqual(plan.size.depth, 3.2, accuracy: 1e-9)
+        XCTAssertEqual(plan.labelPoint.distance(to: Point2(2.0, 1.6)), 0, accuracy: 1e-9)
     }
 }

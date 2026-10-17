@@ -25,8 +25,9 @@ final class DXFWriterTests: XCTestCase {
         let p = pairs(DXFWriter().write(plan))
         let entities = p.filter { $0.0 == 0 }.map(\.1)
         XCTAssertEqual(entities.filter { $0 == "ARC" }.count, 1)       // door swing
-        XCTAssertEqual(entities.filter { $0 == "TEXT" }.count, 5)      // 4 dimensions + bed label
-        XCTAssertEqual(entities.filter { $0 == "LINE" }.count, 43)
+        // 4 wall + 2 overall dimensions, bed, door and window tags, room size and area
+        XCTAssertEqual(entities.filter { $0 == "TEXT" }.count, 11)
+        XCTAssertEqual(entities.filter { $0 == "LINE" }.count, 49)
     }
 
     func testCoordinatesAreInMillimetres() {
