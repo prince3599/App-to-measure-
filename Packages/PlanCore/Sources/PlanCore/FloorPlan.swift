@@ -136,7 +136,13 @@ extension FloorPlan {
     /// The room's floor outline, following walls around their joined corners.
     /// Falls back to the convex hull of the wall ends when the walls don't form a closed loop.
     public var outline: [Point2] {
-        closedWallLoop ?? convexHull(walls.flatMap { [$0.line.start, $0.line.end] })
+        interiorOutline ?? convexHull(walls.flatMap { [$0.line.start, $0.line.end] })
+    }
+
+    /// The floor outline when the walls go most of the way round the room: a closed loop of walls,
+    /// or a loop that steps across gaps the scan missed. Nil for a few loose walls.
+    public var interiorOutline: [Point2]? {
+        closedWallLoop ?? bridgedWallLoop
     }
 
     /// Floor area inside the walls, in square metres.
@@ -171,6 +177,50 @@ extension FloorPlan {
             hi = Point2(max(hi.x, p.dot(u)), max(hi.y, p.dot(v)))
         }
         return (hi.x - lo.x, hi.y - lo.y)
+    }
+
+    /// Follows the walls round the room from the longest one, stepping across a missing piece of wall
+    /// (up to `maxGap`) to the nearest end of another wall. Short stray walls are left out.
+    var bridgedWallLoop: [Point2]? {
+        guard walls.count >= 3, let start = walls.indices.max(by: { walls[$0].line.length < walls[$1].line.length }) else { return nil }
+        let maxGap = 2.0
+        let corners = PlanGeometry.corners(of: walls, tolerance: 0.01)
+        func partner(_ e: PlanGeometry.WallEnd) -> PlanGeometry.WallEnd? {
+            for c in corners {
+                if c.a == e { return c.b }
+                if c.b == e { return c.a }
+            }
+            return nil
+        }
+        var points: [Point2] = []
+        var wall = start, forward = true
+        var visited = Set<Int>()
+        while points.count <= walls.count {
+            visited.insert(wall)
+            let line = walls[wall].line
+            points.append(forward ? line.start : line.end)
+            let here = forward ? line.end : line.start
+            var next = partner(PlanGeometry.WallEnd(wall: wall, atEnd: forward))
+            if next == nil || (visited.contains(next!.wall) && next!.wall != start) {
+                var best: (Double, PlanGeometry.WallEnd)?
+                for j in walls.indices where j != wall && (!visited.contains(j) || j == start) {
+                    for atEnd in [false, true] where !(j == start && atEnd) {
+                        let d = (atEnd ? walls[j].line.end : walls[j].line.start).distance(to: here)
+                        if d <= maxGap, best == nil || d < best!.0 { best = (d, PlanGeometry.WallEnd(wall: j, atEnd: atEnd)) }
+                    }
+                }
+                next = best?.1
+            }
+            guard let n = next else { return nil }
+            if n.wall == start {
+                guard !n.atEnd, points.count >= 3, abs(signedArea(points)) > 0.5 else { return nil }
+                return points
+            }
+            if visited.contains(n.wall) { return nil }
+            wall = n.wall
+            forward = !n.atEnd
+        }
+        return nil
     }
 
     var closedWallLoop: [Point2]? {

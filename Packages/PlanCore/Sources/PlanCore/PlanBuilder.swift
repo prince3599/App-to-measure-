@@ -144,7 +144,7 @@ public enum PlanGeometry {
     /// otherwise the side a ray from the wall's middle meets no other wall is outside. This keeps
     /// L-shaped rooms and short jogs from getting their thickness drawn into the room.
     public static func outwardNormals(of plan: FloorPlan) -> [Point2] {
-        let loop = plan.closedWallLoop
+        let loop = plan.interiorOutline
         let c = plan.centroid
         return plan.walls.enumerated().map { i, w in
             let n = w.line.direction.perpendicular, m = w.line.midpoint

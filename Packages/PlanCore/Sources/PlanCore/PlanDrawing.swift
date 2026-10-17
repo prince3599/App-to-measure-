@@ -143,8 +143,7 @@ public struct PlanDrawing: Sendable {
     /// How far the drawn wall reaches out from the room face at a distance along it.
     private func reach(_ info: WallInfo, at d: Double) -> Double {
         if let span = info.shared.first(where: { d >= $0.start - 1e-6 && d <= $0.end + 1e-6 }) {
-            guard let ti = interiorWallThickness else { return span.thickness }
-            return (span.thickness + ti) / 2
+            return span.thickness
         }
         return exteriorWallThickness ?? info.exteriorThickness
     }
@@ -204,23 +203,18 @@ public struct PlanDrawing: Sendable {
                 for span in info.shared {
                     // Out to the neighbouring room's face, even when the two faces aren't quite parallel.
                     let neighbor = plans[span.neighbor.room].walls[span.neighbor.wall].line
-                    // A standard-thickness wall runs on into the wall it meets at a corner.
-                    func carry(_ atEnd: Bool) -> Double {
-                        guard interiorWallThickness != nil, let other = partner(.init(wall: w, atEnd: atEnd)) else { return 0 }
-                        return thickness(at: other)
-                    }
-                    let a = inner.point(atDistance: span.start - (span.start <= 1e-6 ? carry(false) : 0))
-                    let b = inner.point(atDistance: span.end + (span.end >= length - 1e-6 ? carry(true) : 0))
+                    let a = inner.point(atDistance: span.start), b = inner.point(atDistance: span.end)
                     func across(_ p: Point2) -> Point2 {
                         guard let q = Segment2(p, p + n).lineIntersection(neighbor), (q - p).dot(n) > 0 else { return p + n * span.thickness }
                         return q
                     }
-                    if let ti = interiorWallThickness {
-                        // A standard-thickness wall centred between the two room faces.
-                        func side(_ p: Point2, _ s: Double) -> Point2 { (p + across(p)) / 2 + n * (s * ti / 2) }
-                        solids.append(.init(polygon: [side(a, -1), side(b, -1), side(b, 1), side(a, 1)], wall: ref))
-                    } else {
-                        solids.append(.init(polygon: [a, b, across(b), across(a)], wall: ref))
+                    // The wall fills the space between the two rooms.
+                    solids.append(.init(polygon: [a, b, across(b), across(a)], wall: ref))
+                    // A plain partition is then trimmed to the standard thickness, equally from both rooms.
+                    // Thicker gaps (a chimney, a duct, a bump in the wall) stay solid.
+                    if let ti = interiorWallThickness, span.thickness > ti + 0.005, span.thickness <= 0.3, span.end - span.start >= 0.3 {
+                        let k = (span.thickness - ti) / 2
+                        cuts.append(.init(polygon: [a, b, b + n * k, a + n * k], wall: nil))
                     }
                 }
                 if !joined.contains(.init(wall: w, atEnd: false)) {
@@ -237,6 +231,13 @@ public struct PlanDrawing: Sendable {
                     let p = inner.point(atDistance: a), q = inner.point(atDistance: b)
                     cuts.append(.init(polygon: [p - n * 0.05, q - n * 0.05, q + n * depth, p + n * depth], wall: ref))
                 }
+            }
+        }
+
+        // Walls never reach into a room: each room's floor is cut out of the wall bands.
+        for plan in plans {
+            if let floorOutline = plan.interiorOutline {
+                cuts.append(.init(polygon: floorOutline, wall: nil))
             }
         }
 
