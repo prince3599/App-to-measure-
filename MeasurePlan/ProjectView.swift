@@ -119,6 +119,8 @@ enum ExportFiles {
     struct Files: Equatable {
         var pdf: URL
         var dxf: [URL]
+        /// The floor's raw scan as JSON, to send for troubleshooting.
+        var scanData: URL? = nil
     }
 
     static func write(_ project: HouseProject) -> Files? {
@@ -141,7 +143,11 @@ enum ExportFiles {
         guard (try? PermitPDF.write(project: project, floors: [(floorIndex, floor)], to: pdf)) != nil,
               let dxf = write(floor: floor, index: floorIndex, of: project, in: dir)
         else { return nil }
-        return Files(pdf: pdf, dxf: [dxf])
+        let json = dir.appendingPathComponent("\(safeName(project.name)) \(safeName(floor.name)) scan data.json")
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let saved = (try? encoder.encode(floor)).flatMap { try? $0.write(to: json) } != nil
+        return Files(pdf: pdf, dxf: [dxf], scanData: saved ? json : nil)
     }
 
     private static func write(floor: Floor, index: Int, of project: HouseProject, in dir: URL) -> URL? {

@@ -138,6 +138,9 @@ struct FloorView: View {
                     ForEach(files.dxf, id: \.self) { url in
                         ShareLink(item: url) { Label("AutoCAD DXF", systemImage: "square.and.arrow.up") }
                     }
+                    if let data = files.scanData {
+                        ShareLink(item: data) { Label("Scan Data (to send for help)", systemImage: "doc.text") }
+                    }
                 } label: {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
