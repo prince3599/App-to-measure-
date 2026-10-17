@@ -38,6 +38,8 @@ struct FloorView: View {
     @State private var renamingRoom: UUID?
     @State private var roomName = ""
     @State private var files: ExportFiles.Files?
+    @State private var undoStack: [Floor] = []
+    @State private var redoStack: [Floor] = []
 
     private enum LengthEdit {
         case wall(WallRef)
@@ -125,6 +127,10 @@ struct FloorView: View {
     @ToolbarContentBuilder
     private func toolbar(floor: Floor) -> some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            Button(action: undo) { Label("Undo", systemImage: "arrow.uturn.backward") }
+                .disabled(undoStack.isEmpty)
+            Button(action: redo) { Label("Redo", systemImage: "arrow.uturn.forward") }
+                .disabled(redoStack.isEmpty)
             if let files {
                 Menu {
                     ShareLink(item: files.pdf) { Label("Permit PDF", systemImage: "doc.richtext") }
@@ -588,9 +594,29 @@ struct FloorView: View {
         }
     }
 
+    /// Every edit goes through here, so it can be undone.
     private func modifyFloor(_ change: @escaping (inout Floor) -> Void) {
+        if let floorIndex, let current = project?.floors[floorIndex] {
+            undoStack.append(current)
+            if undoStack.count > 100 { undoStack.removeFirst() }
+            redoStack.removeAll()
+        }
         store.modify(route.project) { p in
             if let i = p.floors.firstIndex(where: { $0.id == route.floor }) { change(&p.floors[i]) }
+        }
+    }
+
+    private func undo() { step(from: &undoStack, to: &redoStack) }
+    private func redo() { step(from: &redoStack, to: &undoStack) }
+
+    private func step(from source: inout [Floor], to target: inout [Floor]) {
+        guard let floorIndex, let current = project?.floors[floorIndex], let restored = source.popLast() else { return }
+        target.append(current)
+        selection = nil
+        activePoint = nil
+        wallStart = nil
+        store.modify(route.project) { p in
+            if let i = p.floors.firstIndex(where: { $0.id == route.floor }) { p.floors[i] = restored }
         }
     }
 }

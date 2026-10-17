@@ -20,7 +20,9 @@ An iPhone and iPad app that measures a whole house with the camera and LiDAR (Ap
    - **Inside a room**: rename it.
 7. **Points**: tap anywhere on a wall to add a point there, then drag it. The walls on both sides follow, so you can bend a wall, add a jog or bay, or fix a crooked corner. Drag any orange corner the same way. Each part of a split wall gets its own dimension and can be given an exact length in Edit. **Remove Point** joins the two walls again.
 8. **Add Wall**: when the scan missed a wall, tap where it starts and where it ends (taps near an orange point snap to it). **Close Gaps** joins every pair of open wall ends up to 5 ft apart in one go. A wrong wall can be removed in Edit with **Delete Wall**.
-9. **Export**: one 11 x 17 in permit sheet per floor, at 1/4" = 1'-0" (or the largest scale that fits), with a title block. A DXF per floor is also exported.
+9. **Undo and Redo**: the arrows at the top of the floor screen step back and forward through every edit.
+10. **Wall thickness**: walls are drawn at standard thicknesses set per house: interior 5" and exterior 10" by default. A wall between two scanned rooms is centred between their faces.
+11. **Export**: one 11 x 17 in permit sheet per floor, at 1/4" = 1'-0" (or the largest scale that fits), with a title block. A DXF per floor is also exported.
 
 **Add Sample House** (in the home screen's menu) creates a two-storey house, so you can try everything without LiDAR.
 

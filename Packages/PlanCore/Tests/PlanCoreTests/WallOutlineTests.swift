@@ -37,4 +37,24 @@ final class WallOutlineTests: XCTestCase {
             }
         }
     }
+
+    func testStandardWallThicknesses() {
+        let floor = SampleData.house.floors[0]
+        var drawing = PlanDrawing()
+        drawing.interiorWallThickness = 0.127
+        drawing.exteriorWallThickness = 0.254
+        let lines: [(Point2, Point2)] = drawing.items(for: floor).compactMap {
+            guard $0.layer == .wall, case let .line(a, b) = $0.primitive else { return nil }
+            return (a, b)
+        }
+        func hasVerticalLine(atX x: Double) -> Bool {
+            lines.contains { abs($0.0.x - x) < 1e-6 && abs($0.1.x - x) < 1e-6 && abs($0.0.y - $0.1.y) > 0.5 }
+        }
+        // Outside face of the living room's left wall, 10" out.
+        XCTAssertTrue(hasVerticalLine(atX: -0.254))
+        // Living room and kitchen faces are at 5.00 and 5.12: a 5" wall centred between them.
+        XCTAssertTrue(hasVerticalLine(atX: 5.06 - 0.0635))
+        XCTAssertTrue(hasVerticalLine(atX: 5.06 + 0.0635))
+        XCTAssertFalse(hasVerticalLine(atX: 5.0))
+    }
 }

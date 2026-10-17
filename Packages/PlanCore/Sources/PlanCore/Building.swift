@@ -66,19 +66,51 @@ public struct HouseProject: Codable, Identifiable, Equatable, Sendable {
     public var unit: LengthUnit
     /// Movable furniture is usually left off permit plans; fixtures and stairs are always drawn.
     public var showFurniture: Bool
+    /// Drawn thickness of walls between two scanned rooms (5" by default).
+    public var interiorWallThickness: Double
+    /// Drawn thickness of outside walls (10" by default).
+    public var exteriorWallThickness: Double
     public var created: Date
     public var floors: [Floor]
 
     public init(name: String, address: String = "", owner: String = "", preparedBy: String = "",
-                unit: LengthUnit = .inches, showFurniture: Bool = false, created: Date = Date(), floors: [Floor] = []) {
+                unit: LengthUnit = .inches, showFurniture: Bool = false,
+                interiorWallThickness: Double = HouseProject.defaultInteriorWall,
+                exteriorWallThickness: Double = HouseProject.defaultExteriorWall,
+                created: Date = Date(), floors: [Floor] = []) {
         self.name = name
         self.address = address
         self.owner = owner
         self.preparedBy = preparedBy
         self.unit = unit
         self.showFurniture = showFurniture
+        self.interiorWallThickness = interiorWallThickness
+        self.exteriorWallThickness = exteriorWallThickness
         self.created = created
         self.floors = floors
+    }
+
+    public static let defaultInteriorWall = 5 * 0.0254
+    public static let defaultExteriorWall = 10 * 0.0254
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, address, owner, preparedBy, unit, showFurniture, interiorWallThickness, exteriorWallThickness, created, floors
+    }
+
+    // Wall thicknesses are optional so houses saved by earlier versions still load.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        address = try c.decode(String.self, forKey: .address)
+        owner = try c.decode(String.self, forKey: .owner)
+        preparedBy = try c.decode(String.self, forKey: .preparedBy)
+        unit = try c.decode(LengthUnit.self, forKey: .unit)
+        showFurniture = try c.decode(Bool.self, forKey: .showFurniture)
+        interiorWallThickness = try c.decodeIfPresent(Double.self, forKey: .interiorWallThickness) ?? Self.defaultInteriorWall
+        exteriorWallThickness = try c.decodeIfPresent(Double.self, forKey: .exteriorWallThickness) ?? Self.defaultExteriorWall
+        created = try c.decode(Date.self, forKey: .created)
+        floors = try c.decode([Floor].self, forKey: .floors)
     }
 
     public static let suggestedFloorNames = ["Basement", "First Floor", "Second Floor", "Third Floor", "Attic"]

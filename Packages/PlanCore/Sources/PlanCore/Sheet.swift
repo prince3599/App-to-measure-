@@ -81,6 +81,8 @@ extension HouseProject {
     public func drawing(for floor: Floor) -> PlanDrawing {
         var d = PlanDrawing(unit: unit)
         d.showFurniture = showFurniture
+        d.interiorWallThickness = interiorWallThickness
+        d.exteriorWallThickness = exteriorWallThickness
         return d
     }
 }

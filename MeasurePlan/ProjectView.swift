@@ -25,6 +25,23 @@ struct ProjectView: View {
                 }
 
                 Section {
+                    Picker("Interior walls", selection: bind(\.interiorWallThickness, HouseProject.defaultInteriorWall)) {
+                        ForEach(Self.thicknessChoices(inches: [3.5, 4, 4.5, 5, 6], current: project.interiorWallThickness), id: \.self) {
+                            Text(project.unit.formatThickness($0)).tag($0)
+                        }
+                    }
+                    Picker("Exterior walls", selection: bind(\.exteriorWallThickness, HouseProject.defaultExteriorWall)) {
+                        ForEach(Self.thicknessChoices(inches: [6, 8, 10, 12], current: project.exteriorWallThickness), id: \.self) {
+                            Text(project.unit.formatThickness($0)).tag($0)
+                        }
+                    }
+                } header: {
+                    Text("Wall thickness")
+                } footer: {
+                    Text("Walls are drawn at these thicknesses. Walls between two scanned rooms are interior; the rest are exterior.")
+                }
+
+                Section {
                     ForEach(project.floors) { floor in
                         NavigationLink(value: FloorRoute(project: projectID, floor: floor.id)) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -141,5 +158,26 @@ enum ExportFiles {
     private static func safeName(_ s: String) -> String {
         let cleaned = s.components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>")).joined(separator: "-")
         return cleaned.isEmpty ? "House" : cleaned
+    }
+}
+
+extension ProjectView {
+    static func thicknessChoices(inches: [Double], current: Double) -> [Double] {
+        var values = inches.map { $0 * 0.0254 }
+        if !values.contains(where: { abs($0 - current) < 1e-9 }) { values.append(current) }
+        return values.sorted()
+    }
+}
+
+extension LengthUnit {
+    /// Wall thickness to the nearest half inch or millimetre.
+    func formatThickness(_ metres: Double) -> String {
+        switch self {
+        case .millimetres:
+            return "\(Int((metres * 1000).rounded())) mm"
+        case .inches:
+            let halves = (metres / 0.0254 * 2).rounded()
+            return halves.truncatingRemainder(dividingBy: 2) == 0 ? "\(Int(halves / 2))\"" : "\(Int(halves / 2))½\""
+        }
     }
 }
