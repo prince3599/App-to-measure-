@@ -34,6 +34,13 @@ final class ScanStore: ObservableObject {
         return scan
     }
 
+    func update(_ scan: SavedScan) {
+        save(scan)
+        if let i = scans.firstIndex(where: { $0.id == scan.id }) {
+            scans[i] = scan
+        }
+    }
+
     func delete(_ scan: SavedScan) {
         try? FileManager.default.removeItem(at: file(for: scan))
         scans.removeAll { $0.id == scan.id }

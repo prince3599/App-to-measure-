@@ -10,7 +10,8 @@ An iPhone app that scans a room with the camera and LiDAR (Apple RoomPlan), draw
 
 1. **Scan Room**: RoomPlan guides you around the room and detects walls, doors, windows, openings and furniture.
 2. **Plan**: walls are joined at the corners and drawn with thickness, with door swings, window glazing, furniture outlines and interior dimensions.
-3. **Export DXF**: the share sheet sends the file to Files, Mail, AirDrop, Google Drive and so on.
+3. **Correct lengths**: tap any wall and type its tape-measured length. The whole plan rescales to match.
+4. **Export DXF**: the share sheet sends the file to Files, Mail, AirDrop, Google Drive and so on.
 
 On devices without LiDAR (and in the simulator) you can use **Add Sample Room** from the toolbar menu to try the plan view and export.
 

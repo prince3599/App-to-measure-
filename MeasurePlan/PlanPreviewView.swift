@@ -1,10 +1,13 @@
 import PlanCore
 import SwiftUI
 
-/// Draws the same layered line work that goes into the DXF file. Pinch to zoom, drag to pan.
+/// Draws the same layered line work that goes into the DXF file.
+/// Pinch to zoom, drag to pan, double-tap to reset, tap a wall to select it.
 struct PlanPreviewView: View {
     var plan: FloorPlan
     var unit: LengthUnit
+    var selectedWall: Int?
+    var onTapWall: ((Int) -> Void)?
 
     @State private var zoom: CGFloat = 1
     @State private var lastZoom: CGFloat = 1
@@ -13,54 +16,98 @@ struct PlanPreviewView: View {
 
     var body: some View {
         let items = PlanDrawing(unit: unit).items(for: plan)
-        Canvas { context, size in
-            guard let extents = Self.extents(of: items) else { return }
-            let (lo, hi) = extents
-            let w = max(hi.x - lo.x, 0.1), h = max(hi.y - lo.y, 0.1)
-            let k = min(size.width / w, size.height / h) * 0.9 * zoom
-            let origin = CGPoint(x: size.width / 2 + pan.width, y: size.height / 2 + pan.height)
-            let mid = (lo + hi) / 2
-            // Plan y points up; screen y points down.
-            func screen(_ p: Point2) -> CGPoint {
-                CGPoint(x: origin.x + (p.x - mid.x) * k, y: origin.y - (p.y - mid.y) * k)
-            }
-
-            for item in items {
-                let color = Self.color(for: item.layer)
-                switch item.primitive {
-                case let .line(a, b):
+        let extents = Self.extents(of: items)
+        GeometryReader { geo in
+            let layout = extents.map { Layout(extents: $0, size: geo.size, zoom: zoom, pan: pan) }
+            Canvas { context, _ in
+                guard let layout else { return }
+                if let selectedWall, plan.walls.indices.contains(selectedWall) {
+                    let line = plan.walls[selectedWall].line
                     var path = Path()
-                    path.move(to: screen(a))
-                    path.addLine(to: screen(b))
-                    context.stroke(path, with: .color(color), lineWidth: item.layer == .wall ? 1.5 : 1)
-                case let .arc(center, radius, start, end):
-                    let sweep = end >= start ? end - start : end - start + 2 * .pi
-                    var path = Path()
-                    for step in 0...24 {
-                        let a = start + sweep * Double(step) / 24
-                        let p = screen(center + Point2(cos(a), sin(a)) * radius)
-                        if step == 0 { path.move(to: p) } else { path.addLine(to: p) }
-                    }
-                    context.stroke(path, with: .color(color), lineWidth: 1)
-                case let .text(at, height, string, rotation):
-                    var c = context
-                    c.translateBy(x: screen(at).x, y: screen(at).y)
-                    c.rotate(by: .radians(-rotation))
-                    c.draw(Text(string).font(.system(size: max(height * k, 6))).foregroundColor(color), at: .zero)
+                    path.move(to: layout.screen(line.start))
+                    path.addLine(to: layout.screen(line.end))
+                    context.stroke(path, with: .color(.accentColor.opacity(0.5)), lineWidth: 10)
+                }
+                for item in items {
+                    draw(item, in: context, layout: layout)
                 }
             }
+            .contentShape(Rectangle())
+            .gesture(
+                MagnifyGesture()
+                    .onChanged { zoom = max(0.5, min(lastZoom * $0.magnification, 10)) }
+                    .onEnded { _ in lastZoom = zoom }
+                    .simultaneously(with: DragGesture()
+                        .onChanged { pan = CGSize(width: lastPan.width + $0.translation.width,
+                                                  height: lastPan.height + $0.translation.height) }
+                        .onEnded { _ in lastPan = pan })
+            )
+            .onTapGesture(count: 2) {
+                zoom = 1; lastZoom = 1; pan = .zero; lastPan = .zero
+            }
+            .onTapGesture(count: 1, coordinateSpace: .local) { location in
+                guard let layout, let onTapWall, let wall = nearestWall(to: location, layout: layout) else { return }
+                onTapWall(wall)
+            }
         }
-        .gesture(
-            MagnifyGesture()
-                .onChanged { zoom = max(0.5, min(lastZoom * $0.magnification, 10)) }
-                .onEnded { _ in lastZoom = zoom }
-                .simultaneously(with: DragGesture()
-                    .onChanged { pan = CGSize(width: lastPan.width + $0.translation.width,
-                                              height: lastPan.height + $0.translation.height) }
-                    .onEnded { _ in lastPan = pan })
-        )
-        .onTapGesture(count: 2) {
-            zoom = 1; lastZoom = 1; pan = .zero; lastPan = .zero
+    }
+
+    /// The wall within 30 points of a tap, if any.
+    private func nearestWall(to location: CGPoint, layout: Layout) -> Int? {
+        let p = layout.plan(location)
+        let tolerance = 30 / layout.scale
+        return plan.walls.indices
+            .map { ($0, plan.walls[$0].line.distance(to: p)) }
+            .filter { $0.1 <= tolerance }
+            .min { $0.1 < $1.1 }?.0
+    }
+
+    private func draw(_ item: DrawingItem, in context: GraphicsContext, layout: Layout) {
+        let color = Self.color(for: item.layer)
+        switch item.primitive {
+        case let .line(a, b):
+            var path = Path()
+            path.move(to: layout.screen(a))
+            path.addLine(to: layout.screen(b))
+            context.stroke(path, with: .color(color), lineWidth: item.layer == .wall ? 1.5 : 1)
+        case let .arc(center, radius, start, end):
+            let sweep = end >= start ? end - start : end - start + 2 * .pi
+            var path = Path()
+            for step in 0...24 {
+                let a = start + sweep * Double(step) / 24
+                let p = layout.screen(center + Point2(cos(a), sin(a)) * radius)
+                if step == 0 { path.move(to: p) } else { path.addLine(to: p) }
+            }
+            context.stroke(path, with: .color(color), lineWidth: 1)
+        case let .text(at, height, string, rotation):
+            var c = context
+            let p = layout.screen(at)
+            c.translateBy(x: p.x, y: p.y)
+            c.rotate(by: .radians(-rotation))
+            c.draw(Text(string).font(.system(size: max(height * layout.scale, 6))).foregroundColor(color), at: .zero)
+        }
+    }
+
+    /// Maps plan metres to screen points. Plan y points up; screen y points down.
+    private struct Layout {
+        var mid: Point2
+        var scale: Double
+        var origin: CGPoint
+
+        init(extents: (Point2, Point2), size: CGSize, zoom: CGFloat, pan: CGSize) {
+            let (lo, hi) = extents
+            let w = max(hi.x - lo.x, 0.1), h = max(hi.y - lo.y, 0.1)
+            scale = min(size.width / w, size.height / h) * 0.9 * zoom
+            mid = (lo + hi) / 2
+            origin = CGPoint(x: size.width / 2 + pan.width, y: size.height / 2 + pan.height)
+        }
+
+        func screen(_ p: Point2) -> CGPoint {
+            CGPoint(x: origin.x + (p.x - mid.x) * scale, y: origin.y - (p.y - mid.y) * scale)
+        }
+
+        func plan(_ p: CGPoint) -> Point2 {
+            Point2(mid.x + (p.x - origin.x) / scale, mid.y - (p.y - origin.y) / scale)
         }
     }
 
