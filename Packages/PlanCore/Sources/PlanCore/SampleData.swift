@@ -64,7 +64,7 @@ extension SampleData {
                 door(2.62, 5.4, along: y, width: 0.8),
                 object("stairs", 7.3, 5.37, 1.0, 2.5, along: y),
             ]),
-        ])
+        ], isComplete: true)
         let second = Floor(name: "Second Floor", rooms: [
             room("Bedroom", box(0, 0, 4.5, 4) + [
                 window(2.25, 0, along: x, width: 1.5), door(3.6, 4, along: x, width: 0.8),
@@ -80,7 +80,7 @@ extension SampleData {
             room("Hall", box(2.62, 4.12, 8.62, 6.62) + [
                 object("stairs", 7.3, 5.37, 1.0, 2.5, along: y),
             ]),
-        ])
+        ], isComplete: true)
         return HouseProject(name: "Sample House", address: "123 Example Street", owner: "Sample Owner",
                             preparedBy: "MeasurePlan", unit: .inches, floors: [first, second])
     }

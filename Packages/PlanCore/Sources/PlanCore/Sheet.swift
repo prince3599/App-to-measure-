@@ -82,7 +82,8 @@ extension HouseProject {
         var d = PlanDrawing(unit: unit)
         d.showFurniture = showFurniture
         d.interiorWallThickness = interiorWallThickness
-        d.exteriorWallThickness = exteriorWallThickness
+        // Outside walls get their full thickness once the floor is marked complete.
+        d.exteriorWallThickness = floor.isComplete ? exteriorWallThickness : interiorWallThickness
         return d
     }
 }
