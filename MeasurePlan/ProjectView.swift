@@ -1,11 +1,14 @@
 import PlanCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ProjectView: View {
     var projectID: UUID
 
     @EnvironmentObject private var store: ProjectStore
     @State private var exports: ExportFiles.Files?
+    @State private var saving: ExportDocument?
+    @State private var saveResult: String?
     @State private var showCustomFloor = false
     @State private var customFloorName = ""
 
@@ -70,9 +73,17 @@ struct ProjectView: View {
                         ShareLink(item: exports.pdf) {
                             Label("Permit PDF (all floors)", systemImage: "doc.richtext")
                         }
+                        Button { saving = ExportDocument(url: exports.pdf) } label: {
+                            Label("Save PDF to Files", systemImage: "folder")
+                        }
+                        ForEach(exports.dxf, id: \.self) { url in
+                            Button { saving = ExportDocument(url: url) } label: {
+                                Label("Save \(url.lastPathComponent) to Files", systemImage: "folder")
+                            }
+                        }
                         if !exports.dxf.isEmpty {
                             ShareLink(items: exports.dxf) {
-                                Label("AutoCAD DXF (one file per floor)", systemImage: "square.and.arrow.up")
+                                Label("Share AutoCAD DXF (one file per floor)", systemImage: "square.and.arrow.up")
                             }
                         }
                     } else {
@@ -87,6 +98,10 @@ struct ProjectView: View {
             .navigationTitle(project.name)
             .toolbar { EditButton() }
             .task(id: project) { exports = ExportFiles.write(project) }
+            .exportSheet($saving) { saveResult = $0 }
+            .alert(saveResult ?? "", isPresented: Binding(get: { saveResult != nil }, set: { if !$0 { saveResult = nil } })) {
+                Button("OK", role: .cancel) {}
+            }
             .alert("Floor name", isPresented: $showCustomFloor) {
                 TextField("e.g. Garage", text: $customFloorName)
                 Button("Add") { if !customFloorName.isEmpty { addFloor(customFloorName) } }
@@ -159,6 +174,49 @@ enum ExportFiles {
     private static func safeName(_ s: String) -> String {
         let cleaned = s.components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>")).joined(separator: "-")
         return cleaned.isEmpty ? "House" : cleaned
+    }
+}
+
+/// A finished drawing handed to the Files app ("Save to Files"), which works
+/// for DXF even where the share sheet offers no app that accepts it.
+struct ExportDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.data] }
+    var data: Data
+    var filename: String
+    var contentType: UTType
+
+    init(url: URL) {
+        data = (try? Data(contentsOf: url)) ?? Data()
+        filename = url.lastPathComponent
+        contentType = UTType(filenameExtension: url.pathExtension, conformingTo: .data) ?? .data
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+        filename = configuration.file.filename ?? "Drawing"
+        contentType = .data
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
+
+extension View {
+    /// Shows the Files save dialog while `document` is set, then reports the outcome.
+    func exportSheet(_ document: Binding<ExportDocument?>, result: @escaping (String) -> Void) -> some View {
+        fileExporter(
+            isPresented: Binding(get: { document.wrappedValue != nil }, set: { if !$0 { document.wrappedValue = nil } }),
+            document: document.wrappedValue,
+            contentType: document.wrappedValue?.contentType ?? .data,
+            defaultFilename: document.wrappedValue?.filename
+        ) { outcome in
+            switch outcome {
+            case .success(let url): result("Saved \(url.lastPathComponent) to Files.")
+            case .failure(let error): result("Couldn't save: \(error.localizedDescription)")
+            }
+            document.wrappedValue = nil
+        }
     }
 }
 

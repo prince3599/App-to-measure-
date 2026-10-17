@@ -38,6 +38,7 @@ struct FloorView: View {
     @State private var renamingRoom: UUID?
     @State private var roomName = ""
     @State private var files: ExportFiles.Files?
+    @State private var saving: ExportDocument?
     @State private var showThickness = false
     @State private var undoStack: [Floor] = []
     @State private var redoStack: [Floor] = []
@@ -105,6 +106,7 @@ struct FloorView: View {
                     Button("Apply") { applyWidth(unit: project.unit) }
                     Button("Cancel", role: .cancel) {}
                 }
+                .exportSheet($saving) { message = $0 }
                 .alert(message ?? "", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
                     Button("OK", role: .cancel) {}
                 }
@@ -141,8 +143,10 @@ struct FloorView: View {
                 Menu {
                     ShareLink(item: files.pdf) { Label("Permit PDF", systemImage: "doc.richtext") }
                     ForEach(files.dxf, id: \.self) { url in
-                        ShareLink(item: url) { Label("AutoCAD DXF", systemImage: "square.and.arrow.up") }
+                        Button { saving = ExportDocument(url: url) } label: { Label("Save DXF to Files", systemImage: "folder") }
+                        ShareLink(item: url) { Label("Share DXF", systemImage: "square.and.arrow.up") }
                     }
+                    Button { saving = ExportDocument(url: files.pdf) } label: { Label("Save PDF to Files", systemImage: "folder") }
                     if let data = files.scanData {
                         ShareLink(item: data) { Label("Scan Data (to send for help)", systemImage: "doc.text") }
                     }
