@@ -78,6 +78,21 @@ extension HouseProject {
         return lines
     }
 
+    /// Door and window schedule rows for one floor: tag, size, type and room.
+    public func scheduleRows(for floor: Floor) -> [(tag: String, size: String, type: String, room: String)] {
+        drawing(for: floor).schedule(for: floor).map { e in
+            let size = e.height > 0 ? "\(unit.format(e.width)) x \(unit.format(e.height))" : unit.format(e.width)
+            let type: String
+            switch (e.kind, e.leaves) {
+            case (.window, _): type = "Window"
+            case (_, ...1): type = "Door"
+            case (_, 2): type = "Double door"
+            default: type = "Door, \(e.leaves) leaves"
+            }
+            return (e.tag, size, type, e.room)
+        }
+    }
+
     public func drawing(for floor: Floor) -> PlanDrawing {
         var d = PlanDrawing(unit: unit)
         d.showFurniture = showFurniture
@@ -99,6 +114,23 @@ extension DXFWriter {
             for (i, line) in lines.enumerated() {
                 let p = Point2(ext.min.x + Double(line.count) * h * 0.35, ext.min.y - 1.0 - Double(i) * h * 1.8)
                 items.append(DrawingItem(layer: .annotation, primitive: .text(at: p, height: h, string: line, rotation: 0)))
+            }
+            // Door and window schedule, beside the title lines.
+            let rows = project.scheduleRows(for: floor)
+            if !rows.isEmpty {
+                let x0 = ext.min.x + Double(lines.map(\.count).max() ?? 0) * h * 0.7 + 1.0
+                let columns = [0.0, 0.8, 3.2, 5.4]
+                let header = ["TAG", "SIZE (W x H)", "TYPE", "ROOM"]
+                let table = [header] + rows.map { [$0.tag, $0.size, $0.type, $0.room] }
+                items.append(DrawingItem(layer: .annotation, primitive: .text(
+                    at: Point2(x0 + 18 * h * 0.35, ext.min.y - 1.0 + h * 1.8), height: h, string: "DOOR AND WINDOW SCHEDULE", rotation: 0)))
+                for (i, row) in table.enumerated() {
+                    let y = ext.min.y - 1.0 - Double(i) * h * 1.8
+                    for (c, cell) in row.enumerated() {
+                        let p = Point2(x0 + columns[c] + Double(cell.count) * h * 0.35, y)
+                        items.append(DrawingItem(layer: .annotation, primitive: .text(at: p, height: h, string: cell, rotation: 0)))
+                    }
+                }
             }
         }
         return write(items)

@@ -58,6 +58,17 @@ public enum LengthUnit: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// One line of a floor's door and window schedule.
+public struct ScheduleEntry: Equatable, Sendable {
+    public var tag: String
+    public var kind: OpeningKind
+    public var width: Double
+    /// 0 when unknown.
+    public var height: Double
+    public var leaves: Int
+    public var room: String
+}
+
 /// A room's plan with its display name.
 public struct LabeledPlan: Sendable {
     public var name: String?
@@ -114,13 +125,14 @@ public struct PlanDrawing: Sendable {
         }
         var extent = solids.flatMap(\.polygon)
 
+        let tags = openingTags(plans: plans)
         for (r, plan) in plans.enumerated() {
             for (w, wall) in plan.walls.enumerated() {
                 let info = analysis.info[r][w]
                 let inner = wall.line, n = info.outward, length = inner.length
                 extent += [inner.start, inner.end]
-                for o in plan.openings where o.wallIndex == w && !isDrawnByEarlierRoom(o, wall: inner, room: r, plans: plans) {
-                    out += symbol(for: o, wall: inner, outward: n, thickness: reach(info, at: o.offset, wall: wall))
+                for (i, o) in plan.openings.enumerated() where o.wallIndex == w && !isDrawnByEarlierRoom(o, wall: inner, room: r, plans: plans) {
+                    out += symbol(for: o, tag: tags[r][i], wall: inner, outward: n, thickness: reach(info, at: o.offset, wall: wall))
                 }
                 if info.exteriorFraction(length: length) > 0.5 && length > 0.3 {
                     out += wallDimension(inner, outward: n, wallThickness: drawnThickness(wall, info))
@@ -260,6 +272,46 @@ public struct PlanDrawing: Sendable {
         return (solids, cuts)
     }
 
+    /// Doors and windows of a floor, numbered D1, D2… and W1, W2… in the order they are drawn.
+    /// A door two rooms share is listed once, under the first room.
+    public func schedule(for rooms: [LabeledPlan]) -> [ScheduleEntry] {
+        let plans = rooms.map(\.plan)
+        let tags = openingTags(plans: plans)
+        var out: [ScheduleEntry] = []
+        for (r, plan) in plans.enumerated() {
+            for w in plan.walls.indices {
+                for (i, o) in plan.openings.enumerated() where o.wallIndex == w {
+                    guard let tag = tags[r][i] else { continue }
+                    out.append(ScheduleEntry(tag: tag, kind: o.kind, width: o.width, height: o.height,
+                                             leaves: o.leaves, room: rooms[r].name ?? "Room \(r + 1)"))
+                }
+            }
+        }
+        return out
+    }
+
+    public func schedule(for floor: Floor) -> [ScheduleEntry] {
+        schedule(for: floor.rooms.map { LabeledPlan(name: $0.name, plan: $0.plan) })
+    }
+
+    /// Tag of each opening, per room and opening index; nil for plain openings and repeats of a shared door.
+    private func openingTags(plans: [FloorPlan]) -> [[Int: String]] {
+        var doors = 0, windows = 0
+        var tags = Array(repeating: [Int: String](), count: plans.count)
+        for (r, plan) in plans.enumerated() {
+            for (w, wall) in plan.walls.enumerated() {
+                for (i, o) in plan.openings.enumerated() where o.wallIndex == w && !isDrawnByEarlierRoom(o, wall: wall.line, room: r, plans: plans) {
+                    switch o.kind {
+                    case .door: doors += 1; tags[r][i] = "D\(doors)"
+                    case .window: windows += 1; tags[r][i] = "W\(windows)"
+                    case .opening: break
+                    }
+                }
+            }
+        }
+        return tags
+    }
+
     /// A door between two scanned rooms shows up in both scans; only the first room draws its symbol.
     private func isDrawnByEarlierRoom(_ o: Opening, wall: Segment2, room: Int, plans: [FloorPlan]) -> Bool {
         let c = wall.point(atDistance: o.offset)
@@ -270,7 +322,7 @@ public struct PlanDrawing: Sendable {
         }
     }
 
-    private func symbol(for o: Opening, wall line: Segment2, outward n: Point2, thickness: Double) -> [DrawingItem] {
+    private func symbol(for o: Opening, tag: String?, wall line: Segment2, outward n: Point2, thickness: Double) -> [DrawingItem] {
         let d = line.direction
         let a = line.point(atDistance: o.offset - o.width / 2)
         let b = line.point(atDistance: o.offset + o.width / 2)
@@ -293,10 +345,9 @@ public struct PlanDrawing: Sendable {
                 items.append(DrawingItem(layer: .door, primitive: .line(hinge, hinge + swing * leaf)))
                 items.append(DrawingItem(layer: .door, primitive: .arc(center: hinge, radius: leaf, start: start, end: end)))
             }
-            if showOpeningTags {
-                let label = count > 1 ? "D \(unit.format(o.width)) (\(count))" : "D \(unit.format(o.width))"
+            if showOpeningTags, let tag {
                 items.append(DrawingItem(layer: .annotation, primitive: .text(
-                    at: mid + swing * 0.3, height: tagHeight, string: label,
+                    at: mid + swing * 0.3, height: tagHeight, string: tag,
                     rotation: readable(d.angle))))
             }
             return items
@@ -304,10 +355,9 @@ public struct PlanDrawing: Sendable {
             var items = [1.0 / 3, 2.0 / 3].map { f in
                 DrawingItem(layer: .glazing, primitive: .line(a + n * (thickness * f), b + n * (thickness * f)))
             }
-            if showOpeningTags {
-                let size = o.height > 0 ? "\(unit.format(o.width)) x \(unit.format(o.height))" : unit.format(o.width)
+            if showOpeningTags, let tag {
                 items.append(DrawingItem(layer: .annotation, primitive: .text(
-                    at: mid + n * (thickness + 0.25), height: tagHeight, string: "W \(size)",
+                    at: mid + n * (thickness + 0.25), height: tagHeight, string: tag,
                     rotation: readable(d.angle))))
             }
             return items

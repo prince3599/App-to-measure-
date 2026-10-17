@@ -92,6 +92,7 @@ enum PermitPDF {
             text.draw(with: box, options: [.usesLineFragmentOrigin], context: nil)
             y += height + (i == 0 ? 10 : 6)
         }
+        schedule(project.scheduleRows(for: floor), in: CGRect(x: rect.minX + 10, y: y + 8, width: rect.width - 20, height: rect.maxY - 110 - (y + 8)), cg: cg)
 
         // North arrow, pointing up the sheet. Rotate it to match the site.
         let c = CGPoint(x: rect.midX, y: rect.maxY - 60)
@@ -106,5 +107,34 @@ enum PermitPDF {
         n.draw(at: CGPoint(x: c.x - n.size().width / 2, y: c.y - 44))
         let note = NSAttributedString(string: "Verify north on site", attributes: [.font: UIFont.systemFont(ofSize: 7)])
         note.draw(at: CGPoint(x: c.x - note.size().width / 2, y: c.y + 20))
+    }
+
+    /// Door and window schedule table, shrunk to fit the space left in the title block.
+    private static func schedule(_ rows: [(tag: String, size: String, type: String, room: String)], in rect: CGRect, cg: CGContext) {
+        guard !rows.isEmpty, rect.height > 40 else { return }
+        let title = NSAttributedString(string: "DOOR AND WINDOW SCHEDULE", attributes: [.font: UIFont.boldSystemFont(ofSize: 8)])
+        title.draw(at: CGPoint(x: rect.minX, y: rect.minY))
+        let top = rect.minY + 14
+        let rowHeight = min(10, max(5, (rect.maxY - top) / CGFloat(rows.count + 1)))
+        let fontSize = rowHeight * 0.75
+        let columns: [CGFloat] = [0, 0.14, 0.52, 0.76].map { $0 * rect.width }
+        let table = [("TAG", "SIZE (W x H)", "TYPE", "ROOM")] + rows.map { ($0.tag, $0.size, $0.type, $0.room) }
+        cg.setStrokeColor(UIColor.black.cgColor)
+        cg.setLineWidth(0.4)
+        for (i, row) in table.enumerated() {
+            let y = top + CGFloat(i) * rowHeight
+            guard y + rowHeight <= rect.maxY else { break }
+            let font = i == 0 ? UIFont.boldSystemFont(ofSize: fontSize) : UIFont.systemFont(ofSize: fontSize)
+            for (c, cell) in [row.0, row.1, row.2, row.3].enumerated() {
+                let width = (c + 1 < columns.count ? columns[c + 1] : rect.width) - columns[c] - 2
+                let style = NSMutableParagraphStyle()
+                style.lineBreakMode = .byTruncatingTail
+                NSAttributedString(string: cell, attributes: [.font: font, .paragraphStyle: style])
+                    .draw(in: CGRect(x: rect.minX + columns[c], y: y + 1, width: width, height: rowHeight))
+            }
+            cg.move(to: CGPoint(x: rect.minX, y: y + rowHeight))
+            cg.addLine(to: CGPoint(x: rect.maxX, y: y + rowHeight))
+            cg.strokePath()
+        }
     }
 }

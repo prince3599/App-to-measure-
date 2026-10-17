@@ -25,6 +25,23 @@ final class HouseTests: XCTestCase {
         XCTAssertEqual(arcs.count, 4)
     }
 
+    func testScheduleNumbersEachDoorAndWindowOnce() {
+        let floor = SampleData.house.floors[0]
+        let drawing = PlanDrawing(unit: .inches)
+        let schedule = drawing.schedule(for: floor)
+        let doors = schedule.filter { $0.kind == .door }, windows = schedule.filter { $0.kind == .window }
+        XCTAssertEqual(doors.map(\.tag), (1...doors.count).map { "D\($0)" })
+        XCTAssertEqual(windows.map(\.tag), (1...windows.count).map { "W\($0)" })
+        // The plan shows each tag exactly once.
+        let texts = drawing.items(for: floor).compactMap { item -> String? in
+            if case let .text(_, _, s, _) = item.primitive { return s } else { return nil }
+        }
+        for entry in schedule {
+            XCTAssertEqual(texts.filter { $0 == entry.tag }.count, 1, entry.tag)
+        }
+        XCTAssertEqual(SampleData.house.scheduleRows(for: floor).count, schedule.count)
+    }
+
     func testCalibratingAFloorScalesEveryRoom() {
         let floor = SampleData.house.floors[0]
         let wall = floor.rooms[0].plan.walls[0].line.length
