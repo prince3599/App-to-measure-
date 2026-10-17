@@ -39,6 +39,14 @@ open MeasurePlan.xcodeproj
 
 In Xcode, pick your team under Signing & Capabilities, change the bundle identifier from `com.example.measureplan` to your own, connect your iPhone, and press Run.
 
+## Run on an iPad without a Mac (Swift Playgrounds)
+
+```sh
+./tools/make-playground.sh   # writes build/MeasurePlan.swiftpm.zip
+```
+
+Copy the zip to the iPad, unzip it in the Files app, and open `MeasurePlan.swiftpm` in Swift Playgrounds. Then press Run. To install it as a standalone app, use the app settings menu. Room scanning needs an iPad Pro with LiDAR. On other iPads, use "Add Sample Room".
+
 ## Tests
 
 The geometry and DXF code lives in a separate Swift package that runs without a device:
