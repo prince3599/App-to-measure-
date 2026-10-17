@@ -173,17 +173,18 @@ public enum PlanGeometry {
     }
 
     /// Outer face of every wall, with ends meeting neighbouring outer faces at corners.
-    /// - Parameter thickness: draws every wall at this thickness instead of its own.
-    public static func outerFaces(of plan: FloorPlan, tolerance: Double = 0.01, thickness: Double? = nil) -> [Segment2] {
+    /// - Parameter thicknesses: drawn thickness of each wall, instead of its own.
+    public static func outerFaces(of plan: FloorPlan, tolerance: Double = 0.01, thicknesses: [Double]? = nil) -> [Segment2] {
         let normals = outwardNormals(of: plan)
+        let thick = thicknesses ?? plan.walls.map(\.thickness)
         var faces = plan.walls.enumerated().map { i, w in
-            w.line.offset(by: thickness ?? w.thickness, along: normals[i])
+            w.line.offset(by: thick[i], along: normals[i])
         }
         let original = faces
         for corner in corners(of: plan.walls, tolerance: tolerance) {
             guard let p = original[corner.a.wall].lineIntersection(original[corner.b.wall]) else { continue }
             // Skip corners between nearly parallel walls, whose faces would meet far away.
-            let reach = 4 * max(thickness ?? plan.walls[corner.a.wall].thickness, thickness ?? plan.walls[corner.b.wall].thickness, 0.1)
+            let reach = 4 * max(thick[corner.a.wall], thick[corner.b.wall], 0.1)
             let ends = [corner.a, corner.b].map { $0.atEnd ? original[$0.wall].end : original[$0.wall].start }
             guard ends.allSatisfy({ $0.distance(to: p) <= reach }) else { continue }
             for end in [corner.a, corner.b] {

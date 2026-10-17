@@ -19,8 +19,7 @@ public struct Floor: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID()
     public var name: String
     public var rooms: [Room]
-    /// Set by the user once every room on the floor is scanned. Until then every wall is drawn
-    /// at the interior thickness, because a wall that looks like an outside wall may still get a room behind it.
+    /// No longer used for drawing; kept so floors saved by earlier versions keep loading.
     public var isComplete: Bool
 
     public init(name: String, rooms: [Room] = [], isComplete: Bool = false) {

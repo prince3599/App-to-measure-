@@ -38,7 +38,7 @@ struct FloorView: View {
     @State private var renamingRoom: UUID?
     @State private var roomName = ""
     @State private var files: ExportFiles.Files?
-    @State private var confirmComplete = false
+    @State private var showThickness = false
     @State private var undoStack: [Floor] = []
     @State private var redoStack: [Floor] = []
 
@@ -78,6 +78,11 @@ struct FloorView: View {
                 }
                 .confirmationDialog("Wall", isPresented: $showWallActions, titleVisibility: .hidden) {
                     wallActions(floor: floor, unit: project.unit)
+                }
+                .confirmationDialog("Wall thickness", isPresented: $showThickness, titleVisibility: .visible) {
+                    thicknessActions(project: project)
+                } message: {
+                    Text("Every wall is drawn \(project.unit.formatThickness(project.interiorWallThickness)) unless you change it here.")
                 }
                 .confirmationDialog(openingTitle(floor), isPresented: $showOpeningActions, titleVisibility: .visible) {
                     openingActions(floor: floor, unit: project.unit)
@@ -204,7 +209,6 @@ struct FloorView: View {
                 } else {
                     Text("Tap a wall, door or window to edit it. Tap inside a room to rename it.")
                         .font(.footnote).foregroundStyle(.secondary).padding(.vertical, 6)
-                    completeBar(project: project, floor: floor)
                     roomList(project: project, floor: floor)
                 }
             }
@@ -267,32 +271,6 @@ struct FloorView: View {
         .padding()
         .frame(maxWidth: .infinity)
         .background(.bar)
-    }
-
-    private func completeBar(project: HouseProject, floor: Floor) -> some View {
-        HStack {
-            if floor.isComplete {
-                Label("Floor complete: outside walls \(project.unit.formatThickness(project.exteriorWallThickness)), inside walls \(project.unit.formatThickness(project.interiorWallThickness))",
-                      systemImage: "checkmark.seal.fill")
-                    .font(.footnote).foregroundStyle(.green)
-                Spacer()
-                Button("Reopen") { modifyFloor { $0.isComplete = false } }
-                    .font(.footnote)
-            } else {
-                Text("All walls are \(project.unit.formatThickness(project.interiorWallThickness)) while you scan.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                Spacer()
-                Button("Floor Scan Complete") { confirmComplete = true }
-                    .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding(.horizontal)
-        .confirmationDialog("Finish this floor?", isPresented: $confirmComplete, titleVisibility: .visible) {
-            Button("Floor Scan Complete") { modifyFloor { $0.isComplete = true } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Outside walls change to \(project.unit.formatThickness(project.exteriorWallThickness)). Walls between rooms stay \(project.unit.formatThickness(project.interiorWallThickness)). You can reopen the floor later.")
-        }
     }
 
     private func drawBar(floor: Floor) -> some View {
@@ -484,6 +462,11 @@ struct FloorView: View {
                 addPoint(on: ref, floor: floor)
                 mode = .points
             }
+            let current = floor.rooms[ref.room].plan.walls[ref.wall].thicknessOverride
+            Button("Wall Thickness (\(current.map { unit.formatThickness($0) } ?? "standard"))…") {
+                // Let this menu close before the next one opens.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { showThickness = true }
+            }
             Button("Delete Wall", role: .destructive) {
                 modifyFloor { $0.rooms[ref.room].plan = $0.rooms[ref.room].plan.removingWall(ref.wall) }
                 selection = nil
@@ -492,6 +475,25 @@ struct FloorView: View {
             Button("Add Window Here") { addOpening(.window, on: ref, floor: floor) }
             Button("Cancel", role: .cancel) { selection = nil }
         }
+    }
+
+    @ViewBuilder
+    private func thicknessActions(project: HouseProject) -> some View {
+        if case let .wall(ref)? = selection {
+            ForEach([3.5, 4, 4.5, 5, 6, 8, 10, 12], id: \.self) { inches in
+                Button(project.unit.formatThickness(inches * 0.0254)) { setThickness(inches * 0.0254, on: ref) }
+            }
+            Button("Standard (\(project.unit.formatThickness(project.interiorWallThickness)))") { setThickness(nil, on: ref) }
+            Button("Cancel", role: .cancel) { selection = nil }
+        }
+    }
+
+    private func setThickness(_ value: Double?, on ref: WallRef) {
+        modifyFloor { f in
+            guard f.rooms.indices.contains(ref.room), f.rooms[ref.room].plan.walls.indices.contains(ref.wall) else { return }
+            f.rooms[ref.room].plan.walls[ref.wall].thicknessOverride = value
+        }
+        selection = nil
     }
 
     private var lengthTitle: String {
@@ -622,8 +624,6 @@ struct FloorView: View {
             guard let i = p.floors.firstIndex(where: { $0.id == route.floor }) else { return }
             room.name = p.floors[i].uniqueRoomName(room.name)
             p.floors[i].rooms.append(room)
-            // A new room means the floor isn't finished yet.
-            p.floors[i].isComplete = false
         }
     }
 

@@ -83,6 +83,7 @@ public struct PlanDrawing: Sendable {
     /// When set, walls between two scanned rooms are drawn this thick, centred between the two room faces.
     public var interiorWallThickness: Double?
     /// When set, outside walls are drawn this thick instead of each wall's own thickness.
+    /// A wall's own `thicknessOverride` wins over both settings.
     public var exteriorWallThickness: Double?
 
     /// Objects drawn even when furniture is hidden.
@@ -119,10 +120,10 @@ public struct PlanDrawing: Sendable {
                 let inner = wall.line, n = info.outward, length = inner.length
                 extent += [inner.start, inner.end]
                 for o in plan.openings where o.wallIndex == w && !isDrawnByEarlierRoom(o, wall: inner, room: r, plans: plans) {
-                    out += symbol(for: o, wall: inner, outward: n, thickness: reach(info, at: o.offset))
+                    out += symbol(for: o, wall: inner, outward: n, thickness: reach(info, at: o.offset, wall: wall))
                 }
                 if info.exteriorFraction(length: length) > 0.5 && length > 0.3 {
-                    out += wallDimension(inner, outward: n, wallThickness: exteriorWallThickness ?? info.exteriorThickness)
+                    out += wallDimension(inner, outward: n, wallThickness: drawnThickness(wall, info))
                 }
             }
 
@@ -141,11 +142,16 @@ public struct PlanDrawing: Sendable {
     }
 
     /// How far the drawn wall reaches out from the room face at a distance along it.
-    private func reach(_ info: WallInfo, at d: Double) -> Double {
+    private func reach(_ info: WallInfo, at d: Double, wall: Wall) -> Double {
         if let span = info.shared.first(where: { d >= $0.start - 1e-6 && d <= $0.end + 1e-6 }) {
             return span.thickness
         }
-        return exteriorWallThickness ?? info.exteriorThickness
+        return drawnThickness(wall, info)
+    }
+
+    /// Thickness an outside wall is drawn at.
+    private func drawnThickness(_ wall: Wall, _ info: WallInfo) -> Double {
+        wall.thicknessOverride ?? exteriorWallThickness ?? info.exteriorThickness
     }
 
     /// Every wall as filled bands (room face to outer face, mitred at corners), and every door,
@@ -157,7 +163,7 @@ public struct PlanDrawing: Sendable {
         var freeEnds: [(WallRef, Point2, Point2, Point2)] = []
 
         for (r, plan) in plans.enumerated() {
-            let outer = PlanGeometry.outerFaces(of: plan, thickness: exteriorWallThickness)
+            let outer = PlanGeometry.outerFaces(of: plan, thicknesses: plan.walls.indices.map { drawnThickness(plan.walls[$0], analysis.info[r][$0]) })
             let corners = PlanGeometry.corners(of: plan.walls, tolerance: 0.01)
             let joined = corners.flatMap { [$0.a, $0.b] }
             func partner(_ e: PlanGeometry.WallEnd) -> PlanGeometry.WallEnd? {
@@ -168,7 +174,7 @@ public struct PlanDrawing: Sendable {
                 return nil
             }
             func thickness(at e: PlanGeometry.WallEnd) -> Double {
-                reach(analysis.info[r][e.wall], at: e.atEnd ? plan.walls[e.wall].line.length : 0)
+                reach(analysis.info[r][e.wall], at: e.atEnd ? plan.walls[e.wall].line.length : 0, wall: plan.walls[e.wall])
             }
             func isExterior(_ e: PlanGeometry.WallEnd) -> Bool {
                 let info = analysis.info[r][e.wall]
@@ -179,7 +185,7 @@ public struct PlanDrawing: Sendable {
                 let info = analysis.info[r][w]
                 let inner = wall.line, n = info.outward, length = inner.length, face = outer[w]
                 guard length > 1e-6 else { continue }
-                let t = exteriorWallThickness ?? info.exteriorThickness
+                let t = drawnThickness(wall, info)
 
                 // Room-face and outer points at a wall end: mitred where two outside walls meet,
                 // carried square past the corner where the other wall is shared, square at a free end.
@@ -212,22 +218,23 @@ public struct PlanDrawing: Sendable {
                     solids.append(.init(polygon: [a, b, across(b), across(a)], wall: ref))
                     // A plain partition is then trimmed to the standard thickness, equally from both rooms.
                     // Thicker gaps (a chimney, a duct, a bump in the wall) stay solid.
-                    if let ti = interiorWallThickness, span.thickness > ti + 0.005, span.thickness <= 0.3, span.end - span.start >= 0.3 {
+                    let chosen = wall.thicknessOverride ?? plans[span.neighbor.room].walls[span.neighbor.wall].thicknessOverride
+                    if let ti = chosen ?? interiorWallThickness, span.thickness > ti + 0.005, span.thickness <= 0.3, span.end - span.start >= 0.3 {
                         let k = (span.thickness - ti) / 2
                         cuts.append(.init(polygon: [a, b, b + n * k, a + n * k], wall: nil))
                     }
                 }
                 if !joined.contains(.init(wall: w, atEnd: false)) {
-                    freeEnds.append((ref, inner.start, inner.start + n * reach(info, at: 0), inner.direction * -1))
+                    freeEnds.append((ref, inner.start, inner.start + n * reach(info, at: 0, wall: wall), inner.direction * -1))
                 }
                 if !joined.contains(.init(wall: w, atEnd: true)) {
-                    freeEnds.append((ref, inner.end, inner.end + n * reach(info, at: length), inner.direction))
+                    freeEnds.append((ref, inner.end, inner.end + n * reach(info, at: length, wall: wall), inner.direction))
                 }
 
                 for o in plan.openings where o.wallIndex == w {
                     let a = max(o.offset - o.width / 2, 0), b = min(o.offset + o.width / 2, length)
                     guard b - a > 1e-3 else { continue }
-                    let depth = max(reach(info, at: o.offset), info.thickness(at: o.offset)) + 0.05
+                    let depth = max(reach(info, at: o.offset, wall: wall), info.thickness(at: o.offset)) + 0.05
                     let p = inner.point(atDistance: a), q = inner.point(atDistance: b)
                     cuts.append(.init(polygon: [p - n * 0.05, q - n * 0.05, q + n * depth, p + n * depth], wall: ref))
                 }

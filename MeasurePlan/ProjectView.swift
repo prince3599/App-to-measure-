@@ -25,20 +25,15 @@ struct ProjectView: View {
                 }
 
                 Section {
-                    Picker("Interior walls", selection: bind(\.interiorWallThickness, HouseProject.defaultInteriorWall)) {
-                        ForEach(Self.thicknessChoices(inches: [3.5, 4, 4.5, 5, 6], current: project.interiorWallThickness), id: \.self) {
-                            Text(project.unit.formatThickness($0)).tag($0)
-                        }
-                    }
-                    Picker("Exterior walls", selection: bind(\.exteriorWallThickness, HouseProject.defaultExteriorWall)) {
-                        ForEach(Self.thicknessChoices(inches: [6, 8, 10, 12], current: project.exteriorWallThickness), id: \.self) {
+                    Picker("All walls", selection: bind(\.interiorWallThickness, HouseProject.defaultInteriorWall)) {
+                        ForEach(Self.thicknessChoices(inches: [3.5, 4, 4.5, 5, 6, 8], current: project.interiorWallThickness), id: \.self) {
                             Text(project.unit.formatThickness($0)).tag($0)
                         }
                     }
                 } header: {
                     Text("Wall thickness")
                 } footer: {
-                    Text("Walls are drawn at these thicknesses. Walls between two scanned rooms are interior; the rest are exterior.")
+                    Text("Every wall is drawn at this thickness. To change one wall, tap it on the floor plan and choose Wall Thickness.")
                 }
 
                 Section {

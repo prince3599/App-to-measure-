@@ -40,10 +40,13 @@ public struct Wall: Codable, Equatable, Sendable {
     public var line: Segment2
     /// Thickness drawn outward from `line`.
     public var thickness: Double
+    /// Drawn thickness the user chose for this wall, replacing the house's standard thickness.
+    public var thicknessOverride: Double?
 
-    public init(line: Segment2, thickness: Double = Wall.defaultThickness) {
+    public init(line: Segment2, thickness: Double = Wall.defaultThickness, thicknessOverride: Double? = nil) {
         self.line = line
         self.thickness = thickness
+        self.thicknessOverride = thicknessOverride
     }
 
     /// Typical exterior wall (2x6 framing plus finishes). Interior walls get their real thickness when both rooms are scanned.

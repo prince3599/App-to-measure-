@@ -21,9 +21,8 @@ An iPhone and iPad app that measures a whole house with the camera and LiDAR (Ap
 7. **Points**: tap anywhere on a wall to add a point there, then drag it. The walls on both sides follow, so you can bend a wall, add a jog or bay, or fix a crooked corner. Drag any orange corner the same way. Each part of a split wall gets its own dimension and can be given an exact length in Edit. **Remove Point** joins the two walls again.
 8. **Add Wall**: when the scan missed a wall, tap where it starts and where it ends (taps near an orange point snap to it). **Close Gaps** joins every pair of open wall ends up to 5 ft apart in one go. A wrong wall can be removed in Edit with **Delete Wall**.
 9. **Undo and Redo**: the arrows at the top of the floor screen step back and forward through every edit.
-10. **Floor Scan Complete**: while you scan, every wall is drawn at the interior thickness. When the whole floor is scanned, tap **Floor Scan Complete** and the outside walls change to the exterior thickness. **Reopen** undoes it, and scanning a new room reopens the floor automatically.
-11. **Wall thickness**: walls are drawn at standard thicknesses set per house: interior 5" and exterior 10" by default. A wall between two scanned rooms fills the space between them and, for an ordinary partition, is trimmed to the interior thickness from both sides. Walls never reach into a room.
-12. **Export**: one 11 x 17 in permit sheet per floor, at 1/4" = 1'-0" (or the largest scale that fits), with a title block. A DXF per floor is also exported.
+10. **Wall thickness**: every wall is drawn 5" (set per house). To change one wall, tap it in Edit and choose **Wall Thickness**. A wall between two scanned rooms fills the space between them and, for an ordinary partition, is trimmed to its thickness from both sides. Walls never reach into a room.
+11. **Export**: one 11 x 17 in permit sheet per floor, at 1/4" = 1'-0" (or the largest scale that fits), with a title block. A DXF per floor is also exported.
 
 **Add Sample House** (in the home screen's menu) creates a two-storey house, so you can try everything without LiDAR.
 

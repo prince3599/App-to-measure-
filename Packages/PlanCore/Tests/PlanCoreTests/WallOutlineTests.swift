@@ -58,4 +58,18 @@ final class WallOutlineTests: XCTestCase {
         XCTAssertTrue(hasVerticalLine(atX: 5.11 + 0.0635))
         XCTAssertFalse(hasVerticalLine(atX: 5.0))
     }
+
+    func testOneWallCanBeThicker() {
+        var floor = SampleData.house.floors[0]
+        floor.rooms[0].plan.walls[3].thicknessOverride = 0.254   // living room's left wall
+        var drawing = PlanDrawing()
+        drawing.interiorWallThickness = 0.127
+        drawing.exteriorWallThickness = 0.127
+        let xs: [Double] = drawing.items(for: floor).compactMap {
+            guard $0.layer == .wall, case let .line(a, b) = $0.primitive, abs(a.x - b.x) < 1e-6, abs(a.y - b.y) > 0.5 else { return nil }
+            return a.x
+        }
+        XCTAssertTrue(xs.contains { abs($0 + 0.254) < 1e-6 })
+        XCTAssertTrue(xs.contains { abs($0 - 8.62 - 0.127) < 1e-6 })   // kitchen's right wall stays standard
+    }
 }
