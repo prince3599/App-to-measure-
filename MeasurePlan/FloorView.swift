@@ -8,6 +8,7 @@ struct FloorView: View {
     private enum Mode: String, CaseIterable {
         case edit = "Edit"
         case points = "Points"
+        case draw = "Add Wall"
         case move = "Move Rooms"
     }
 
@@ -18,6 +19,8 @@ struct FloorView: View {
     @State private var dragDelta: Point2?
     /// Points mode: the selected wall corner or added point.
     @State private var activePoint: (room: Int, point: Point2)?
+    /// Add Wall mode: the first point tapped.
+    @State private var wallStart: (room: Int, point: Point2)?
 
     @State private var isScanning = false
     @State private var confirmRescan = false
@@ -110,6 +113,7 @@ struct FloorView: View {
                 .onChange(of: mode) { _, newMode in
                     selection = nil
                     if newMode != .points { activePoint = nil }
+                    wallStart = nil
                 }
         } else {
             ContentUnavailableView("Floor not found", systemImage: "square.stack.3d.up")
@@ -172,8 +176,9 @@ struct FloorView: View {
                 PlanPreviewView(
                     items: project.drawing(for: shown).items(for: shown),
                     highlights: highlights(shown),
-                    points: mode == .points ? shown.rooms.flatMap(\.plan.points) : [],
-                    activePoint: mode == .points ? activePoint.map { a in dragDelta.map { a.point + $0 } ?? a.point } : nil,
+                    points: mode == .points || mode == .draw ? shown.rooms.flatMap(\.plan.points) : [],
+                    activePoint: mode == .points ? activePoint.map { a in dragDelta.map { a.point + $0 } ?? a.point }
+                        : mode == .draw ? wallStart?.point : nil,
                     onTap: { p, tolerance in handleTap(p, tolerance: tolerance, floor: floor) },
                     onDrag: canDrag ? { delta, ended in handleDrag(delta, ended: ended) } : nil
                 )
@@ -184,6 +189,8 @@ struct FloorView: View {
                     moveBar(floor: floor)
                 } else if mode == .points {
                     pointsBar(floor: floor)
+                } else if mode == .draw {
+                    drawBar(floor: floor)
                 } else {
                     Text("Tap a wall, door or window to edit it. Tap inside a room to rename it.")
                         .font(.footnote).foregroundStyle(.secondary).padding(.vertical, 6)
@@ -251,6 +258,42 @@ struct FloorView: View {
         .background(.bar)
     }
 
+    private func drawBar(floor: Floor) -> some View {
+        VStack(spacing: 10) {
+            Text(wallStart == nil
+                 ? "Tap where the missing wall starts, then where it ends. Taps near an orange point snap to it. Or tap Close Gaps to join open wall ends automatically."
+                 : "Now tap where the wall ends.")
+                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            HStack(spacing: 12) {
+                if wallStart != nil {
+                    Button("Cancel") { wallStart = nil }
+                }
+                Button("Close Gaps") { closeGaps(floor: floor) }
+                    .buttonStyle(.borderedProminent)
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(.bar)
+    }
+
+    private func closeGaps(floor: Floor) {
+        var updated = floor
+        var added = 0
+        for r in updated.rooms.indices {
+            let result = updated.rooms[r].plan.closingGaps()
+            updated.rooms[r].plan = result.plan
+            added += result.added
+        }
+        if added > 0 {
+            modifyFloor { $0 = updated }
+            message = "Added \(added) wall\(added == 1 ? "" : "s"). Tap a wrong one in Edit and choose Delete Wall."
+        } else {
+            message = "No open wall ends within 5 ft of each other. Draw the wall by tapping its two ends."
+        }
+    }
+
     private func roomList(project: HouseProject, floor: Floor) -> some View {
         List {
             Section("\(floor.rooms.count) rooms · \(project.unit.formatArea(floor.netArea))") {
@@ -284,7 +327,7 @@ struct FloorView: View {
         switch mode {
         case .move: return selectedRoom != nil
         case .points: return activePoint != nil
-        case .edit: return false
+        case .edit, .draw: return false
         }
     }
 
@@ -318,6 +361,19 @@ struct FloorView: View {
         tapPoint = p
         let hit = floor.hit(at: p, tolerance: tolerance)
         switch mode {
+        case .draw:
+            let snapped = floor.pointHit(at: p, tolerance: tolerance)
+            let point = snapped?.point ?? p
+            if let start = wallStart, floor.rooms.indices.contains(start.room) {
+                wallStart = nil
+                if let plan = floor.rooms[start.room].plan.addingWall(from: start.point, to: point, snap: tolerance) {
+                    modifyFloor { $0.rooms[start.room].plan = plan }
+                } else {
+                    message = "The wall is too short. Tap two points further apart."
+                }
+            } else if let room = snapped?.room ?? floor.room(near: p) {
+                wallStart = (room, point)
+            }
         case .points:
             if let found = floor.pointHit(at: p, tolerance: tolerance) {
                 activePoint = found
@@ -390,6 +446,10 @@ struct FloorView: View {
             Button("Add Point Here (to bend or split the wall)") {
                 addPoint(on: ref, floor: floor)
                 mode = .points
+            }
+            Button("Delete Wall", role: .destructive) {
+                modifyFloor { $0.rooms[ref.room].plan = $0.rooms[ref.room].plan.removingWall(ref.wall) }
+                selection = nil
             }
             Button("Add Door Here") { addOpening(.door, on: ref, floor: floor) }
             Button("Add Window Here") { addOpening(.window, on: ref, floor: floor) }

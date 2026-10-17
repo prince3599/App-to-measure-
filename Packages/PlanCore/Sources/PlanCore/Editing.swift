@@ -170,6 +170,68 @@ extension FloorPlan {
     }
 }
 
+// MARK: - Adding walls
+
+extension FloorPlan {
+    /// Wall ends not joined to another wall: where the scan stopped seeing a wall.
+    public var freeEnds: [Point2] {
+        let joined = PlanGeometry.corners(of: walls, tolerance: 0.01).flatMap { [$0.a, $0.b] }
+        return walls.indices.flatMap { i -> [Point2] in
+            [false, true].compactMap { atEnd in
+                joined.contains(PlanGeometry.WallEnd(wall: i, atEnd: atEnd)) ? nil : (atEnd ? walls[i].line.end : walls[i].line.start)
+            }
+        }
+    }
+
+    /// Adds a wall between two points. An end near a free wall end snaps onto it so the walls join.
+    public func addingWall(from a: Point2, to b: Point2, snap: Double = 0.3) -> FloorPlan? {
+        let ends = freeEnds
+        func snapped(_ p: Point2) -> Point2 {
+            ends.min { $0.distance(to: p) < $1.distance(to: p) }.flatMap { $0.distance(to: p) <= snap ? $0 : nil } ?? p
+        }
+        let line = Segment2(snapped(a), snapped(b))
+        guard line.length >= 0.1 else { return nil }
+        var plan = self
+        plan.walls.append(Wall(line: line))
+        return plan
+    }
+
+    /// Removes a wall and the doors and windows in it.
+    public func removingWall(_ index: Int) -> FloorPlan {
+        guard walls.indices.contains(index) else { return self }
+        var plan = self
+        plan.walls.remove(at: index)
+        plan.openings = openings.compactMap { o in
+            guard o.wallIndex != index else { return nil }
+            var o = o
+            if o.wallIndex > index { o.wallIndex -= 1 }
+            return o
+        }
+        return plan
+    }
+
+    /// Joins pairs of free wall ends up to `maxGap` apart with new walls, nearest pairs first.
+    public func closingGaps(maxGap: Double = 1.5) -> (plan: FloorPlan, added: Int) {
+        let ends = freeEnds
+        var pairs: [(Double, Int, Int)] = []
+        for i in ends.indices {
+            for j in ends.indices where j > i {
+                let d = ends[i].distance(to: ends[j])
+                if d >= 0.02, d <= maxGap { pairs.append((d, i, j)) }
+            }
+        }
+        var used = Set<Int>()
+        var plan = self
+        var added = 0
+        for (_, i, j) in pairs.sorted(by: { $0.0 < $1.0 }) where !used.contains(i) && !used.contains(j) {
+            used.formUnion([i, j])
+            plan.walls.append(Wall(line: Segment2(ends[i], ends[j])))
+            added += 1
+        }
+        return (plan, added)
+    }
+}
+
 extension Floor {
     /// The wall end (corner or added point) nearest `p`, within `tolerance`.
     public func pointHit(at p: Point2, tolerance: Double) -> (room: Int, point: Point2)? {
@@ -181,6 +243,16 @@ extension Floor {
             }
         }
         return best.map { ($0.1, $0.2) }
+    }
+
+    /// The room a new wall drawn at `p` belongs to: the room it's in, else the one with the nearest wall.
+    public func room(near p: Point2) -> Int? {
+        if let r = rooms.indices.first(where: { contains(rooms[$0].plan.outline, p) }) { return r }
+        return rooms.indices.min { a, b in
+            let da = rooms[a].plan.walls.map { $0.line.distance(to: p) }.min() ?? .infinity
+            let db = rooms[b].plan.walls.map { $0.line.distance(to: p) }.min() ?? .infinity
+            return da < db
+        }
     }
 
     public func movingPoint(room: Int, point: Point2, by delta: Point2) -> Floor {

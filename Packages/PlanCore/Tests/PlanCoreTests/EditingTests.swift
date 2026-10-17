@@ -83,4 +83,26 @@ final class EditingTests: XCTestCase {
         XCTAssertEqual(hit.room, 0)
         XCTAssertEqual(hit.point.distance(to: Point2(5, 0)), 0, accuracy: 1e-6)
     }
+
+    func testClosingAndDrawingMissingWalls() throws {
+        let living = floor.rooms[0].plan
+        // The scan missed most of the top wall.
+        var broken = living
+        broken.walls[2].line = Segment2(Point2(5, 4), Point2(3.5, 4))
+        broken.walls[3].line = Segment2(Point2(0, 3.0), Point2(0, 0))
+        broken.openings.removeAll { $0.wallIndex == 2 }
+        XCTAssertEqual(broken.freeEnds.count, 2)
+
+        let closed = broken.closingGaps(maxGap: 4)
+        XCTAssertEqual(closed.added, 1)
+        XCTAssertTrue(closed.plan.freeEnds.isEmpty)
+
+        let drawn = try XCTUnwrap(broken.addingWall(from: Point2(3.4, 4.1), to: Point2(0.1, 3.05)))
+        XCTAssertTrue(drawn.freeEnds.isEmpty)
+        XCTAssertNil(broken.addingWall(from: Point2(1, 1), to: Point2(1.02, 1)))
+
+        let removed = living.removingWall(0)
+        XCTAssertEqual(removed.walls.count, 3)
+        XCTAssertFalse(removed.openings.contains { $0.wallIndex >= 3 })
+    }
 }

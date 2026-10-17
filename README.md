@@ -19,7 +19,8 @@ An iPhone and iPad app that measures a whole house with the camera and LiDAR (Ap
    - **A window**: change its width, change it to a door, or delete it.
    - **Inside a room**: rename it.
 7. **Points**: tap anywhere on a wall to add a point there, then drag it. The walls on both sides follow, so you can bend a wall, add a jog or bay, or fix a crooked corner. Drag any orange corner the same way. Each part of a split wall gets its own dimension and can be given an exact length in Edit. **Remove Point** joins the two walls again.
-8. **Export**: one 11 x 17 in permit sheet per floor, at 1/4" = 1'-0" (or the largest scale that fits), with a title block. A DXF per floor is also exported.
+8. **Add Wall**: when the scan missed a wall, tap where it starts and where it ends (taps near an orange point snap to it). **Close Gaps** joins every pair of open wall ends up to 5 ft apart in one go. A wrong wall can be removed in Edit with **Delete Wall**.
+9. **Export**: one 11 x 17 in permit sheet per floor, at 1/4" = 1'-0" (or the largest scale that fits), with a title block. A DXF per floor is also exported.
 
 **Add Sample House** (in the home screen's menu) creates a two-storey house, so you can try everything without LiDAR.
 
@@ -82,7 +83,7 @@ MeasurePlan/                 iOS app (SwiftUI)
   ProjectStore.swift         Saved houses (JSON in Documents/Projects)
 Packages/PlanCore/           Platform-independent core
   Building.swift             House, floors, rooms
-  Editing.swift              Move, rotate and snap rooms; wall lengths; wall points; tap hit tests
+  Editing.swift              Move, rotate and snap rooms; wall lengths; wall points; adding and closing walls; tap hit tests
   PlanBuilder.swift          Joins wall corners, attaches doors/windows to walls
   WallAnalysis.swift         Finds walls shared by two rooms
   PlanDrawing.swift          Floor -> layered lines, arcs and text
