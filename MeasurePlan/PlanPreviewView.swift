@@ -7,6 +7,9 @@ struct PlanPreviewView: View {
     var items: [DrawingItem]
     /// Drawn as a thick accent stroke under the plan (selected wall, door or room).
     var highlights: [Segment2] = []
+    /// Drawn as dots (wall corners and added points), with `activePoint` drawn larger.
+    var points: [Point2] = []
+    var activePoint: Point2?
     /// Tap location in plan metres, and a hit tolerance in metres matching about 30 points on screen.
     var onTap: ((Point2, Double) -> Void)?
     /// Drag distance in plan metres since the drag began, and whether it ended.
@@ -33,6 +36,16 @@ struct PlanPreviewView: View {
                 }
                 for item in items {
                     draw(item, in: context, layout: layout)
+                }
+                for p in points {
+                    let c = layout.screen(p)
+                    context.fill(Path(ellipseIn: CGRect(x: c.x - 5, y: c.y - 5, width: 10, height: 10)), with: .color(.orange))
+                }
+                if let activePoint {
+                    let c = layout.screen(activePoint)
+                    let ring = Path(ellipseIn: CGRect(x: c.x - 11, y: c.y - 11, width: 22, height: 22))
+                    context.fill(ring, with: .color(.accentColor.opacity(0.35)))
+                    context.stroke(ring, with: .color(.accentColor), lineWidth: 2)
                 }
             }
             .contentShape(Rectangle())

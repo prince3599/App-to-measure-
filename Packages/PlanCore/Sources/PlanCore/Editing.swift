@@ -83,6 +83,114 @@ extension FloorPlan {
     }
 }
 
+// MARK: - Wall points
+
+extension FloorPlan {
+    /// Wall ends, with ends that meet at a corner listed once.
+    public var points: [Point2] {
+        var out: [Point2] = []
+        for w in walls {
+            for p in [w.line.start, w.line.end] where !out.contains(where: { $0.distance(to: p) < 0.02 }) {
+                out.append(p)
+            }
+        }
+        return out
+    }
+
+    /// Splits a wall in two at the point nearest `p`, so each part can be moved or measured on its own.
+    /// Returns nil when the point is too close to an end.
+    public func splittingWall(_ index: Int, at p: Point2) -> FloorPlan? {
+        guard walls.indices.contains(index) else { return nil }
+        let line = walls[index].line
+        let d = line.distanceAlong(p)
+        guard d > 0.1, d < line.length - 0.1 else { return nil }
+        let q = line.point(atDistance: d)
+
+        var plan = self
+        plan.walls[index].line = Segment2(line.start, q)
+        var second = walls[index]
+        second.line = Segment2(q, line.end)
+        plan.walls.insert(second, at: index + 1)
+        for i in plan.openings.indices {
+            if plan.openings[i].wallIndex > index {
+                plan.openings[i].wallIndex += 1
+            } else if plan.openings[i].wallIndex == index, plan.openings[i].offset > d {
+                plan.openings[i].wallIndex = index + 1
+                plan.openings[i].offset -= d
+            }
+        }
+        return plan
+    }
+
+    /// Moves every wall end at `point` to `target`. The walls meeting there follow,
+    /// and doors and windows stay where they were on their walls.
+    public func movingPoint(_ point: Point2, to target: Point2, tolerance: Double = 0.02) -> FloorPlan {
+        var plan = self
+        for i in plan.walls.indices {
+            if walls[i].line.start.distance(to: point) <= tolerance { plan.walls[i].line.start = target }
+            if walls[i].line.end.distance(to: point) <= tolerance { plan.walls[i].line.end = target }
+        }
+        plan.walls.removeAll { $0.line.length < 0.01 }
+        guard plan.walls.count == walls.count else { return self }
+        plan.reanchorOpenings(from: self)
+        return plan
+    }
+
+    /// Joins the two walls that meet at `point` back into one wall. Returns nil unless exactly two walls meet there.
+    public func removingPoint(_ point: Point2, tolerance: Double = 0.02) -> FloorPlan? {
+        let ends = walls.indices.flatMap { i -> [(wall: Int, atEnd: Bool)] in
+            var e: [(wall: Int, atEnd: Bool)] = []
+            if walls[i].line.start.distance(to: point) <= tolerance { e.append((i, false)) }
+            if walls[i].line.end.distance(to: point) <= tolerance { e.append((i, true)) }
+            return e
+        }
+        guard ends.count == 2, ends[0].wall != ends[1].wall else { return nil }
+        let (a, b) = ends[0].wall < ends[1].wall ? (ends[0], ends[1]) : (ends[1], ends[0])
+        let farA = a.atEnd ? walls[a.wall].line.start : walls[a.wall].line.end
+        let farB = b.atEnd ? walls[b.wall].line.start : walls[b.wall].line.end
+        // Keep wall a's direction where possible so its openings keep their side.
+        let joined = a.atEnd ? Segment2(farA, farB) : Segment2(farB, farA)
+        guard joined.length > 0.05 else { return nil }
+
+        var plan = self
+        plan.walls[a.wall].line = joined
+        plan.walls.remove(at: b.wall)
+        for i in plan.openings.indices {
+            let o = openings[i]
+            if o.wallIndex == a.wall || o.wallIndex == b.wall {
+                let c = walls[o.wallIndex].line.point(atDistance: o.offset)
+                let half = min(o.width, joined.length) / 2
+                plan.openings[i].wallIndex = a.wall
+                plan.openings[i].offset = min(max(joined.distanceAlong(c), half), joined.length - half)
+            } else if o.wallIndex > b.wall {
+                plan.openings[i].wallIndex -= 1
+            }
+        }
+        return plan
+    }
+}
+
+extension Floor {
+    /// The wall end (corner or added point) nearest `p`, within `tolerance`.
+    public func pointHit(at p: Point2, tolerance: Double) -> (room: Int, point: Point2)? {
+        var best: (Double, Int, Point2)?
+        for (r, room) in rooms.enumerated() {
+            for q in room.plan.points {
+                let d = q.distance(to: p)
+                if d <= tolerance, best == nil || d < best!.0 { best = (d, r, q) }
+            }
+        }
+        return best.map { ($0.1, $0.2) }
+    }
+
+    public func movingPoint(room: Int, point: Point2, by delta: Point2) -> Floor {
+        guard rooms.indices.contains(room) else { return self }
+        var floor = self
+        floor.rooms[room].plan = rooms[room].plan.movingPoint(point, to: point + delta)
+        return floor
+    }
+}
+
 extension Room {
     public func transformed(by t: RigidTransform) -> Room {
         var room = self

@@ -54,4 +54,33 @@ final class EditingTests: XCTestCase {
         XCTAssertEqual(o.leaves, 1)
         XCTAssertFalse(o.swingsOut)
     }
+
+    func testAddingMovingAndRemovingAWallPoint() throws {
+        let living = floor.rooms[0].plan
+        let split = try XCTUnwrap(living.splittingWall(0, at: Point2(2.5, 0.03)))
+        XCTAssertEqual(split.walls.count, living.walls.count + 1)
+        XCTAssertEqual(split.walls[0].line.end.distance(to: Point2(2.5, 0)), 0, accuracy: 1e-9)
+        XCTAssertEqual(split.openings[0].wallIndex, 0)
+        XCTAssertEqual(split.area, living.area, accuracy: 1e-9)
+        XCTAssertNil(living.splittingWall(0, at: Point2(0.05, 0)))
+
+        let bent = split.movingPoint(Point2(2.5, 0), to: Point2(2.5, -1))
+        XCTAssertEqual(bent.area, living.area + 2.5, accuracy: 1e-9)
+
+        let restored = try XCTUnwrap(split.removingPoint(Point2(2.5, 0)))
+        XCTAssertEqual(restored.walls, living.walls)
+        for (a, b) in zip(restored.openings, living.openings) {
+            XCTAssertEqual(a.wallIndex, b.wallIndex)
+            XCTAssertEqual(a.offset, b.offset, accuracy: 1e-9)
+        }
+
+        // Removing a corner joins its two walls with a diagonal.
+        let cut = try XCTUnwrap(living.removingPoint(Point2(0, 0)))
+        XCTAssertEqual(cut.walls.count, 3)
+        XCTAssertEqual(cut.area, 10, accuracy: 1e-9)
+
+        let hit = try XCTUnwrap(floor.pointHit(at: Point2(4.98, 0.03), tolerance: 0.1))
+        XCTAssertEqual(hit.room, 0)
+        XCTAssertEqual(hit.point.distance(to: Point2(5, 0)), 0, accuracy: 1e-6)
+    }
 }

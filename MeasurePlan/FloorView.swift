@@ -7,6 +7,7 @@ struct FloorView: View {
 
     private enum Mode: String, CaseIterable {
         case edit = "Edit"
+        case points = "Points"
         case move = "Move Rooms"
     }
 
@@ -15,6 +16,8 @@ struct FloorView: View {
     @State private var selection: FloorHit?
     @State private var tapPoint = Point2.zero
     @State private var dragDelta: Point2?
+    /// Points mode: the selected wall corner or added point.
+    @State private var activePoint: (room: Int, point: Point2)?
 
     @State private var isScanning = false
     @State private var confirmRescan = false
@@ -104,7 +107,10 @@ struct FloorView: View {
                     }
                     Button("Cancel", role: .cancel) {}
                 }
-                .onChange(of: mode) { _, _ in selection = nil }
+                .onChange(of: mode) { _, newMode in
+                    selection = nil
+                    if newMode != .points { activePoint = nil }
+                }
         } else {
             ContentUnavailableView("Floor not found", systemImage: "square.stack.3d.up")
         }
@@ -166,14 +172,18 @@ struct FloorView: View {
                 PlanPreviewView(
                     items: project.drawing(for: shown).items(for: shown),
                     highlights: highlights(shown),
+                    points: mode == .points ? shown.rooms.flatMap(\.plan.points) : [],
+                    activePoint: mode == .points ? activePoint.map { a in dragDelta.map { a.point + $0 } ?? a.point } : nil,
                     onTap: { p, tolerance in handleTap(p, tolerance: tolerance, floor: floor) },
-                    onDrag: mode == .move && selectedRoom != nil ? { delta, ended in handleDrag(delta, ended: ended) } : nil
+                    onDrag: canDrag ? { delta, ended in handleDrag(delta, ended: ended) } : nil
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(.systemBackground))
 
                 if mode == .move {
                     moveBar(floor: floor)
+                } else if mode == .points {
+                    pointsBar(floor: floor)
                 } else {
                     Text("Tap a wall, door or window to edit it. Tap inside a room to rename it.")
                         .font(.footnote).foregroundStyle(.secondary).padding(.vertical, 6)
@@ -212,6 +222,35 @@ struct FloorView: View {
         .background(.bar)
     }
 
+    private func pointsBar(floor: Floor) -> some View {
+        VStack(spacing: 10) {
+            if let active = activePoint {
+                Text("Drag the point to move it. The walls on both sides follow. Then use Edit to type exact lengths.")
+                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                HStack(spacing: 12) {
+                    Button("Remove Point", role: .destructive) {
+                        if floor.rooms.indices.contains(active.room),
+                           let plan = floor.rooms[active.room].plan.removingPoint(active.point) {
+                            modifyFloor { $0.rooms[active.room].plan = plan }
+                            activePoint = nil
+                        } else {
+                            message = "This point can't be removed: it needs exactly two walls meeting at it."
+                        }
+                    }
+                    Button("Done") { activePoint = nil }
+                        .buttonStyle(.borderedProminent)
+                }
+                .buttonStyle(.bordered)
+            } else {
+                Text("Tap anywhere on a wall to add a point there, or tap an orange point to select it.")
+                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(.bar)
+    }
+
     private func roomList(project: HouseProject, floor: Floor) -> some View {
         List {
             Section("\(floor.rooms.count) rooms · \(project.unit.formatArea(floor.netArea))") {
@@ -241,8 +280,20 @@ struct FloorView: View {
         return nil
     }
 
+    private var canDrag: Bool {
+        switch mode {
+        case .move: return selectedRoom != nil
+        case .points: return activePoint != nil
+        case .edit: return false
+        }
+    }
+
     private func displayedFloor(_ floor: Floor) -> Floor {
-        if let dragDelta, let r = selectedRoom { return floor.movingRoom(r, by: dragDelta) }
+        guard let dragDelta else { return floor }
+        if mode == .points, let a = activePoint {
+            return floor.movingPoint(room: a.room, point: a.point, by: dragDelta)
+        }
+        if let r = selectedRoom { return floor.movingRoom(r, by: dragDelta) }
         return floor
     }
 
@@ -267,6 +318,16 @@ struct FloorView: View {
         tapPoint = p
         let hit = floor.hit(at: p, tolerance: tolerance)
         switch mode {
+        case .points:
+            if let found = floor.pointHit(at: p, tolerance: tolerance) {
+                activePoint = found
+            } else if case let .wall(ref)? = hit {
+                addPoint(on: ref, floor: floor)
+            } else if case let .opening(r, i)? = hit, let o = opening(floor, r, i) {
+                addPoint(on: WallRef(room: r, wall: o.wallIndex), floor: floor)
+            } else {
+                activePoint = nil
+            }
         case .move:
             switch hit {
             case let .room(r)?: selection = .room(r)
@@ -288,6 +349,16 @@ struct FloorView: View {
     }
 
     private func handleDrag(_ delta: Point2, ended: Bool) {
+        if mode == .points, let a = activePoint {
+            if ended {
+                dragDelta = nil
+                modifyFloor { $0 = $0.movingPoint(room: a.room, point: a.point, by: delta) }
+                activePoint = (a.room, a.point + delta)
+            } else {
+                dragDelta = delta
+            }
+            return
+        }
         guard let r = selectedRoom else { return }
         if ended {
             dragDelta = nil
@@ -316,6 +387,10 @@ struct FloorView: View {
                 lengthText = unit.format(length)
                 lengthEdit = .scaleFloor(ref)
             }
+            Button("Add Point Here (to bend or split the wall)") {
+                addPoint(on: ref, floor: floor)
+                mode = .points
+            }
             Button("Add Door Here") { addOpening(.door, on: ref, floor: floor) }
             Button("Add Window Here") { addOpening(.window, on: ref, floor: floor) }
             Button("Cancel", role: .cancel) { selection = nil }
@@ -343,6 +418,18 @@ struct FloorView: View {
             modifyFloor { $0 = $0.calibrated(room: ref.room, wall: ref.wall, to: metres) }
         }
         selection = nil
+    }
+
+    /// Splits the wall at the last tap and selects the new point.
+    private func addPoint(on ref: WallRef, floor: Floor) {
+        guard floor.rooms.indices.contains(ref.room),
+              let plan = floor.rooms[ref.room].plan.splittingWall(ref.wall, at: tapPoint) else {
+            message = "Tap a little further from the wall's end to add a point."
+            return
+        }
+        let line = plan.walls[ref.wall].line
+        modifyFloor { $0.rooms[ref.room].plan = plan }
+        activePoint = (ref.room, line.end)
     }
 
     private func addOpening(_ kind: OpeningKind, on ref: WallRef, floor: Floor) {
