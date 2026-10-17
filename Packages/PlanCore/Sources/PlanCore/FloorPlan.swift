@@ -173,7 +173,7 @@ extension FloorPlan {
         return (hi.x - lo.x, hi.y - lo.y)
     }
 
-    private var closedWallLoop: [Point2]? {
+    var closedWallLoop: [Point2]? {
         guard walls.count >= 3 else { return nil }
         let corners = PlanGeometry.corners(of: walls, tolerance: 0.01)
         func partner(_ e: PlanGeometry.WallEnd) -> PlanGeometry.WallEnd? {

@@ -237,11 +237,13 @@ extension Floor {
         let pivot = plan.labelPoint
         var best: (score: Double, transform: RigidTransform)?
 
-        for wall in plan.walls {
-            let n = PlanGeometry.outwardNormal(of: wall, roomCentroid: plan.centroid)
+        let normals = PlanGeometry.outwardNormals(of: plan)
+        for (w, wall) in plan.walls.enumerated() {
+            let n = normals[w]
             for (r2, other) in rooms.enumerated() where r2 != index {
-                for wall2 in other.plan.walls {
-                    let n2 = PlanGeometry.outwardNormal(of: wall2, roomCentroid: other.plan.centroid)
+                let normals2 = PlanGeometry.outwardNormals(of: other.plan)
+                for (w2, wall2) in other.plan.walls.enumerated() {
+                    let n2 = normals2[w2]
                     let target = n2 * -1
                     let angle = atan2(n.cross(target), n.dot(target))
                     guard abs(angle) <= maxAngle else { continue }

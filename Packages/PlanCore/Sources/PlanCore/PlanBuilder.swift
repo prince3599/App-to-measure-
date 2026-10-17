@@ -140,11 +140,43 @@ public enum PlanGeometry {
         return n.dot(wall.line.midpoint - roomCentroid) >= 0 ? n : n * -1
     }
 
+    /// Outward normal of every wall in a room. Uses the room's outline when the walls close into a loop;
+    /// otherwise the side a ray from the wall's middle meets no other wall is outside. This keeps
+    /// L-shaped rooms and short jogs from getting their thickness drawn into the room.
+    public static func outwardNormals(of plan: FloorPlan) -> [Point2] {
+        let loop = plan.closedWallLoop
+        let c = plan.centroid
+        return plan.walls.enumerated().map { i, w in
+            let n = w.line.direction.perpendicular, m = w.line.midpoint
+            if let loop, w.line.length > 0.02 {
+                return contains(loop, m + n * 0.01) ? n * -1 : n
+            }
+            func hits(_ dir: Point2) -> Bool {
+                plan.walls.indices.contains { j in
+                    j != i && rayDistance(from: m, direction: dir, to: plan.walls[j].line) != nil
+                }
+            }
+            let plus = hits(n), minus = hits(n * -1)
+            if plus != minus { return plus ? n * -1 : n }
+            return n.dot(m - c) >= 0 ? n : n * -1
+        }
+    }
+
+    /// Distance along a ray to where it crosses a segment, or nil.
+    static func rayDistance(from p: Point2, direction d: Point2, to s: Segment2) -> Double? {
+        let v = s.vector
+        let denom = d.cross(v)
+        guard abs(denom) > 1e-12 else { return nil }
+        let w = s.start - p
+        let t = w.cross(v) / denom, u = w.cross(d) / denom
+        return t > 1e-9 && u >= -1e-9 && u <= 1 + 1e-9 ? t : nil
+    }
+
     /// Outer face of every wall, with ends meeting neighbouring outer faces at corners.
     public static func outerFaces(of plan: FloorPlan, tolerance: Double = 0.01) -> [Segment2] {
-        let c = plan.centroid
-        var faces = plan.walls.map { w in
-            w.line.offset(by: w.thickness, along: outwardNormal(of: w, roomCentroid: c))
+        let normals = outwardNormals(of: plan)
+        var faces = plan.walls.enumerated().map { i, w in
+            w.line.offset(by: w.thickness, along: normals[i])
         }
         let original = faces
         for corner in corners(of: plan.walls, tolerance: tolerance) {

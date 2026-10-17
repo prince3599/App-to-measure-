@@ -49,9 +49,8 @@ public struct WallAnalysis: Sendable {
     /// - Parameter maxThickness: room faces further apart than this are treated as separate walls.
     public init(rooms: [FloorPlan], maxThickness: Double = 0.45) {
         info = rooms.map { plan in
-            plan.walls.map { w in
-                WallInfo(outward: PlanGeometry.outwardNormal(of: w, roomCentroid: plan.centroid),
-                         exteriorThickness: w.thickness, shared: [])
+            zip(plan.walls, PlanGeometry.outwardNormals(of: plan)).map { w, n in
+                WallInfo(outward: n, exteriorThickness: w.thickness, shared: [])
             }
         }
         for r in rooms.indices {

@@ -102,48 +102,19 @@ public struct PlanDrawing: Sendable {
         let plans = rooms.map(\.plan)
         let analysis = WallAnalysis(rooms: plans)
         var out: [DrawingItem] = []
-        var extent: [Point2] = []
+
+        let (solids, cuts) = wallShapes(plans: plans, analysis: analysis)
+        for line in WallOutline.boundary(solids: solids, cuts: cuts) {
+            out.append(DrawingItem(layer: .wall, primitive: .line(line.start, line.end)))
+        }
+        var extent = solids.flatMap(\.polygon)
 
         for (r, plan) in plans.enumerated() {
-            let outer = PlanGeometry.outerFaces(of: plan)
-            let joined = PlanGeometry.corners(of: plan.walls, tolerance: 0.01).flatMap { [$0.a, $0.b] }
-
             for (w, wall) in plan.walls.enumerated() {
                 let info = analysis.info[r][w]
                 let inner = wall.line, n = info.outward, length = inner.length
-                let face = outer[w]
-                let openings = plan.openings.filter { $0.wallIndex == w }
-                let gaps = openingGaps(own: openings, info: info, inner: inner, plans: plans)
                 extent += [inner.start, inner.end]
-
-                // Room-side face, broken at openings.
-                for (a, b) in subtractRanges([(0, length)], gaps) {
-                    out.append(DrawingItem(layer: .wall, primitive: .line(inner.point(atDistance: a), inner.point(atDistance: b))))
-                }
-                // Outer face where nothing is scanned behind the wall.
-                for (a, b) in subtractRanges(info.exteriorRanges(length: length), gaps) {
-                    let fa = a <= 1e-6 ? 0 : face.distanceAlong(inner.point(atDistance: a) + n * info.exteriorThickness)
-                    let fb = b >= length - 1e-6 ? face.length : face.distanceAlong(inner.point(atDistance: b) + n * info.exteriorThickness)
-                    guard fb - fa > 1e-6 else { continue }
-                    out.append(DrawingItem(layer: .wall, primitive: .line(face.point(atDistance: fa), face.point(atDistance: fb))))
-                    extent += [face.point(atDistance: fa), face.point(atDistance: fb)]
-                }
-                // Jambs at each opening edge.
-                for g in gaps {
-                    for d in [g.0, g.1] where d > 1e-6 && d < length - 1e-6 {
-                        let p = inner.point(atDistance: d)
-                        out.append(DrawingItem(layer: .wall, primitive: .line(p, p + n * info.thickness(at: d))))
-                    }
-                }
-                // Close free exterior wall ends.
-                if !joined.contains(.init(wall: w, atEnd: false)) && info.thickness(at: 0) == info.exteriorThickness {
-                    out.append(DrawingItem(layer: .wall, primitive: .line(inner.start, face.start)))
-                }
-                if !joined.contains(.init(wall: w, atEnd: true)) && info.thickness(at: length) == info.exteriorThickness {
-                    out.append(DrawingItem(layer: .wall, primitive: .line(inner.end, face.end)))
-                }
-
-                for o in openings where !isDrawnByEarlierRoom(o, wall: inner, room: r, plans: plans) {
+                for o in plan.openings where o.wallIndex == w && !isDrawnByEarlierRoom(o, wall: inner, room: r, plans: plans) {
                     out += symbol(for: o, wall: inner, outward: n, thickness: info.thickness(at: o.offset))
                 }
                 if info.exteriorFraction(length: length) > 0.5 && length > 0.3 {
@@ -165,20 +136,94 @@ public struct PlanDrawing: Sendable {
         return out
     }
 
-    /// Openings in this wall, plus openings the room on the other side found in its face.
-    private func openingGaps(own: [Opening], info: WallInfo, inner: Segment2, plans: [FloorPlan]) -> [(Double, Double)] {
-        var gaps = own.map { ($0.offset - $0.width / 2, $0.offset + $0.width / 2) }
-        for span in info.shared {
-            let neighbor = plans[span.neighbor.room]
-            let line = neighbor.walls[span.neighbor.wall].line
-            for o in neighbor.openings where o.wallIndex == span.neighbor.wall {
-                let t = inner.distanceAlong(line.point(atDistance: o.offset))
-                gaps.append((t - o.width / 2, t + o.width / 2))
+    /// Every wall as filled bands (room face to outer face, mitred at corners), and every door,
+    /// window and opening as a cut through the wall.
+    private func wallShapes(plans: [FloorPlan], analysis: WallAnalysis) -> (solids: [WallOutline.Shape], cuts: [WallOutline.Shape]) {
+        var solids: [WallOutline.Shape] = []
+        var cuts: [WallOutline.Shape] = []
+        // Free wall ends: the wall, the end on its room face, the matching outer point, and the direction away from the wall.
+        var freeEnds: [(WallRef, Point2, Point2, Point2)] = []
+
+        for (r, plan) in plans.enumerated() {
+            let outer = PlanGeometry.outerFaces(of: plan)
+            let corners = PlanGeometry.corners(of: plan.walls, tolerance: 0.01)
+            let joined = corners.flatMap { [$0.a, $0.b] }
+            func partner(_ e: PlanGeometry.WallEnd) -> PlanGeometry.WallEnd? {
+                for c in corners {
+                    if c.a == e { return c.b }
+                    if c.b == e { return c.a }
+                }
+                return nil
+            }
+            func thickness(at e: PlanGeometry.WallEnd) -> Double {
+                analysis.info[r][e.wall].thickness(at: e.atEnd ? plan.walls[e.wall].line.length : 0)
+            }
+            func isExterior(_ e: PlanGeometry.WallEnd) -> Bool {
+                thickness(at: e) == analysis.info[r][e.wall].exteriorThickness
+            }
+            for (w, wall) in plan.walls.enumerated() {
+                let ref = WallRef(room: r, wall: w)
+                let info = analysis.info[r][w]
+                let inner = wall.line, n = info.outward, length = inner.length, face = outer[w]
+                guard length > 1e-6 else { continue }
+                let t = info.exteriorThickness
+
+                // Room-face and outer points at a wall end: mitred where two outside walls meet,
+                // carried square past the corner where the other wall is shared, square at a free end.
+                func endPoints(_ atEnd: Bool) -> (Point2, Point2) {
+                    let end = PlanGeometry.WallEnd(wall: w, atEnd: atEnd)
+                    let base = atEnd ? inner.end : inner.start
+                    guard let other = partner(end) else { return (base, base + n * t) }
+                    if isExterior(end) && isExterior(other) { return (base, atEnd ? face.end : face.start) }
+                    let e = thickness(at: other)
+                    let q = inner.point(atDistance: atEnd ? length + e : -e)
+                    return (q, q + n * t)
+                }
+                func outerPoint(_ d: Double) -> Point2 {
+                    face.point(atDistance: face.distanceAlong(inner.point(atDistance: d) + n * t))
+                }
+                for (a, b) in info.exteriorRanges(length: length) {
+                    let (ia, oa) = a <= 1e-6 ? endPoints(false) : (inner.point(atDistance: a), outerPoint(a))
+                    let (ib, ob) = b >= length - 1e-6 ? endPoints(true) : (inner.point(atDistance: b), outerPoint(b))
+                    solids.append(.init(polygon: [ia, ib, ob, oa], wall: ref))
+                }
+                for span in info.shared {
+                    // Out to the neighbouring room's face, even when the two faces aren't quite parallel.
+                    let neighbor = plans[span.neighbor.room].walls[span.neighbor.wall].line
+                    let a = inner.point(atDistance: span.start), b = inner.point(atDistance: span.end)
+                    func across(_ p: Point2) -> Point2 {
+                        guard let q = Segment2(p, p + n).lineIntersection(neighbor), (q - p).dot(n) > 0 else { return p + n * span.thickness }
+                        return q
+                    }
+                    solids.append(.init(polygon: [a, b, across(b), across(a)], wall: ref))
+                }
+                if !joined.contains(.init(wall: w, atEnd: false)) {
+                    freeEnds.append((ref, inner.start, inner.start + n * info.thickness(at: 0), inner.direction * -1))
+                }
+                if !joined.contains(.init(wall: w, atEnd: true)) {
+                    freeEnds.append((ref, inner.end, inner.end + n * info.thickness(at: length), inner.direction))
+                }
+
+                for o in plan.openings where o.wallIndex == w {
+                    let a = max(o.offset - o.width / 2, 0), b = min(o.offset + o.width / 2, length)
+                    guard b - a > 1e-3 else { continue }
+                    let depth = info.thickness(at: o.offset) + 0.05
+                    let p = inner.point(atDistance: a), q = inner.point(atDistance: b)
+                    cuts.append(.init(polygon: [p - n * 0.05, q - n * 0.05, q + n * depth, p + n * depth], wall: ref))
+                }
             }
         }
-        return gaps
-            .map { (max($0.0, 0), min($0.1, inner.length)) }
-            .filter { $0.1 - $0.0 > 1e-6 }
+
+        // A wall that stops just short of another wall is carried on to meet it.
+        for (ref, p, q, dir) in freeEnds {
+            let mid = (p + q) / 2
+            guard !solids.contains(where: { $0.wall != ref && contains($0.polygon, mid + dir * 1e-3) }) else { continue }
+            let hits = [p, q].compactMap { WallOutline.rayHit(from: $0, direction: dir, shapes: solids, exclude: ref) }
+            guard let reach = hits.min(), reach <= 0.35 else { continue }
+            let e = reach + 0.01
+            solids.append(.init(polygon: [p, p + dir * e, q + dir * e, q], wall: ref))
+        }
+        return (solids, cuts)
     }
 
     /// A door between two scanned rooms shows up in both scans; only the first room draws its symbol.
