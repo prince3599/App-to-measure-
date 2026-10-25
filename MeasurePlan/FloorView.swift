@@ -415,9 +415,10 @@ struct FloorView: View {
             switch hit {
             case .wall?: showWallActions = true
             case .opening?: showOpeningActions = true
-            case let .room(r)?:
+            case let .room(r)? where floor.rooms.indices.contains(r):
                 roomName = floor.rooms[r].name
                 renamingRoom = floor.rooms[r].id
+            case .room?: break
             case nil: break
             }
         }
@@ -536,6 +537,7 @@ struct FloorView: View {
     }
 
     private func addOpening(_ kind: OpeningKind, on ref: WallRef, floor: Floor) {
+        guard floor.rooms.indices.contains(ref.room), floor.rooms[ref.room].plan.walls.indices.contains(ref.wall) else { return }
         let line = floor.rooms[ref.room].plan.walls[ref.wall].line
         let width = min(kind == .door ? 0.9 : 1.2, line.length)
         let offset = min(max(line.distanceAlong(tapPoint), width / 2), line.length - width / 2)
@@ -604,6 +606,7 @@ struct FloorView: View {
         modifyFloor { f in
             guard f.rooms.indices.contains(r), f.rooms[r].plan.openings.indices.contains(i) else { return }
             change(&f.rooms[r].plan.openings[i])
+            guard f.rooms[r].plan.walls.indices.contains(f.rooms[r].plan.openings[i].wallIndex) else { return }
             let wall = f.rooms[r].plan.walls[f.rooms[r].plan.openings[i].wallIndex].line
             let half = min(f.rooms[r].plan.openings[i].width, wall.length) / 2
             f.rooms[r].plan.openings[i].width = half * 2

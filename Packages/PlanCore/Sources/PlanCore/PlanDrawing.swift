@@ -317,7 +317,8 @@ public struct PlanDrawing: Sendable {
         let c = wall.point(atDistance: o.offset)
         return plans.prefix(room).contains { plan in
             plan.openings.contains { other in
-                other.kind == o.kind && plan.walls[other.wallIndex].line.point(atDistance: other.offset).distance(to: c) < 0.5
+                other.kind == o.kind && plan.walls.indices.contains(other.wallIndex)
+                    && plan.walls[other.wallIndex].line.point(atDistance: other.offset).distance(to: c) < 0.5
             }
         }
     }

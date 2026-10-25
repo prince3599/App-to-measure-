@@ -181,6 +181,8 @@ enum ExportFiles {
 /// for DXF even where the share sheet offers no app that accepts it.
 struct ExportDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.data] }
+    // The save dialog only accepts a type listed here; any other type stops the app.
+    static var writableContentTypes: [UTType] { [.data, .pdf, .json] }
     var data: Data
     var filename: String
     var contentType: UTType
@@ -188,7 +190,11 @@ struct ExportDocument: FileDocument {
     init(url: URL) {
         data = (try? Data(contentsOf: url)) ?? Data()
         filename = url.lastPathComponent
-        contentType = UTType(filenameExtension: url.pathExtension, conformingTo: .data) ?? .data
+        switch url.pathExtension.lowercased() {
+        case "pdf": contentType = .pdf
+        case "json": contentType = .json
+        default: contentType = .data  // DXF has no system type; the file name keeps its .dxf ending.
+        }
     }
 
     init(configuration: ReadConfiguration) throws {

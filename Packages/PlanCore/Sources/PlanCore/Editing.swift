@@ -74,7 +74,7 @@ extension FloorPlan {
     mutating func reanchorOpenings(from old: FloorPlan) {
         for i in openings.indices {
             let o = openings[i]
-            guard old.walls.indices.contains(o.wallIndex) else { continue }
+            guard old.walls.indices.contains(o.wallIndex), walls.indices.contains(o.wallIndex) else { continue }
             let before = old.walls[o.wallIndex].line, after = walls[o.wallIndex].line
             let half = min(o.width, after.length) / 2
             let offset = after.distanceAlong(before.point(atDistance: o.offset))
